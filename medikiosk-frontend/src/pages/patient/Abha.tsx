@@ -6,9 +6,11 @@ import { MockABHAProvider } from '@/services/auth/MockABHAProvider';
 import { NumericKeypad } from '@/components/kiosk/NumericKeypad';
 import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
 
+import { apiFetch } from '@/services/api/client';
+
 export default function Abha() {
   const navigate = useNavigate();
-  const { setAbhaId, setPatient } = usePatientSession();
+  const { setAbhaId, setPatient, setPatientId, setUhid, setEncounterId } = usePatientSession();
   
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<'idle' | 'verifying' | 'success' | 'error'>('idle');
@@ -38,25 +40,61 @@ export default function Abha() {
     const verifyAbha = async (abha: string) => {
       setStatus('verifying');
       try {
-        const patientData = await MockABHAProvider.verifyAbha(abha);
+        const cleanAbha = abha.replace(/\D/g, '');
+        const patientData = await MockABHAProvider.verifyAbha(cleanAbha);
+
+        // Query or register patient in backend
+        let backendPatient: any;
+        try {
+          backendPatient = await apiFetch<any>(`/patients/search?abha=${cleanAbha}`);
+        } catch (e: any) {
+          if (e.status === 404) {
+            backendPatient = await apiFetch<any>('/patients', {
+              method: 'POST',
+              body: JSON.stringify({
+                full_name: patientData.name,
+                age: parseInt(patientData.age) || 30,
+                gender: patientData.gender,
+                city: patientData.district || 'Pune',
+                state: patientData.state || 'Maharashtra',
+                identities: [
+                  { identity_type: 'ABHA', identity_value: cleanAbha, is_verified: true },
+                  { identity_type: 'MOBILE', identity_value: patientData.mobile, is_verified: true }
+                ]
+              }),
+            });
+          } else {
+            throw e;
+          }
+        }
+
+        // Create clinical encounter on backend
+        const encounter = await apiFetch<any>('/encounters', {
+          method: 'POST',
+          body: JSON.stringify({ patient_id: backendPatient.id, priority: 'NORMAL' }),
+        });
+
         setStatus('success');
         setAbhaId(abha);
         setPatient(patientData);
+        setPatientId(backendPatient.id);
+        setUhid(backendPatient.patient_uhid || backendPatient.uhid);
+        setEncounterId(encounter.id);
         
         // Auto-navigate after success
         setTimeout(() => {
           navigate('/patient/consent');
-        }, 2000);
+        }, 1500);
       } catch (err: any) {
         setStatus('error');
-        setErrorMessage(err.message || 'Verification failed');
+        setErrorMessage(err.message || 'Verification failed. Please check your ABHA Number.');
       }
     };
 
     if (input.length === 14 && status === 'idle') {
       verifyAbha(input);
     }
-  }, [input, status, navigate, setAbhaId, setPatient]);
+  }, [input, status, navigate, setAbhaId, setPatient, setPatientId, setUhid, setEncounterId]);
 
   // Format ABHA as XX-XXXX-XXXX-XXXX for display
   const formatAbha = (raw: string) => {

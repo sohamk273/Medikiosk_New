@@ -1,12 +1,23 @@
 import { CheckCircle2, ShieldCheck, FileText, Activity, Stethoscope, Mic, XCircle } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
+import { apiFetch } from '@/services/api/client';
 
 export default function Consent() {
-  const { consent, setConsent } = usePatientSession();
+  const { consent, setConsent, encounterId } = usePatientSession();
 
-  const toggleConsent = (accepted: boolean) => {
+  const toggleConsent = async (accepted: boolean) => {
     setConsent({ accepted, timestamp: new Date().toISOString() });
+    if (accepted && encounterId) {
+      try {
+        await apiFetch(`/encounters/${encounterId}/consent`, {
+          method: 'POST',
+          body: JSON.stringify({ accepted: true }),
+        });
+      } catch (err) {
+        console.error('Failed to persist consent to backend:', err);
+      }
+    }
   };
 
   return (

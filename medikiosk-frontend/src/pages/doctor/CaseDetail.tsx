@@ -9,6 +9,7 @@ import { MockAyushAssessmentProvider } from '@/services/doctor/MockAyushAssessme
 import { MockDocumentProvider } from '@/services/doctor/MockDocumentProvider';
 import { MockClinicalReportProvider } from '@/services/doctor/MockClinicalReportProvider';
 import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
+import { apiFetch, apiFetchSafe } from '@/services/api/client';
 
 export default function CaseDetail() {
   const { caseId } = useParams();
@@ -17,14 +18,73 @@ export default function CaseDetail() {
   const [caseData, setCaseData] = useState<DoctorCase | null>(() => {
     return caseId ? (MockDoctorCaseProvider.getCaseById(caseId) || null) : null;
   });
+  const [queueEntryId, setQueueEntryId] = useState<string | null>(null);
+  const [tokenNumber, setTokenNumber] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (caseId) {
-      const data = MockDoctorCaseProvider.getCaseById(caseId);
-      setCaseData(data || null);
-    }
+    if (!caseId) return;
+
+    const fetchCase = async () => {
+      setIsLoading(true);
+      try {
+        const res = await apiFetchSafe<any>(`/encounters/${caseId}`);
+        if (res.ok && res.data) {
+          const { encounter, patient } = res.data;
+          let uiStatus: 'waiting' | 'in-consultation' | 'completed' = 'waiting';
+          const encStatus = (encounter.status || '').toLowerCase();
+          const qStatus = (res.data.queue_status || '').toUpperCase();
+
+          if (encStatus === 'in_consultation' || qStatus === 'CALLED' || qStatus === 'IN_CONSULTATION') {
+            uiStatus = 'in-consultation';
+          } else if (encStatus === 'completed') {
+            uiStatus = 'completed';
+          }
+
+          setCaseData({
+            caseId: encounter.encounter_number || encounter.id,
+            patientName: patient.full_name,
+            age: patient.age ?? '—',
+            gender: patient.gender,
+            mobile: patient.mobile,
+            chiefComplaint: encounter.chief_complaint,
+            voiceResponses: [],
+            ayushResponses: [],
+            documents: [],
+            redFlagTriggered: encounter.red_flag_triggered || encounter.priority === 'EMERGENCY',
+            submittedAt: encounter.registered_at,
+            status: uiStatus,
+          });
+
+          setQueueEntryId(res.data.queue_entry_id || encounter.id);
+          if (res.data.token_number) setTokenNumber(res.data.token_number);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to fetch encounter from backend:', err);
+      } finally {
+        setIsLoading(false);
+      }
+
+      // Fallback to mock data for pre-existing mock cases
+      const mockData = MockDoctorCaseProvider.getCaseById(caseId);
+      if (mockData) {
+        setCaseData(mockData);
+      }
+    };
+
+    fetchCase();
   }, [caseId]);
 
+  if (isLoading && !caseData) {
+    return (
+      <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+        <div className="bg-white rounded-3xl p-10 border border-slate-200 shadow-sm">
+          <p className="text-lg text-slate-500">Loading patient encounter...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!caseData) {
     return (
@@ -58,17 +118,27 @@ export default function CaseDetail() {
     return abha;
   };
 
-  const handleStartConsultation = () => {
+  const handleStartConsultation = async () => {
+    const targetId = queueEntryId || caseId;
+    if (targetId) {
+      try {
+        await apiFetch(`/queue/${targetId}/call`, {
+          method: 'POST',
+        });
+      } catch (err) {
+        console.error('Failed to trigger backend queue call transition:', err);
+      }
+    }
     MockDoctorCaseProvider.updateCaseStatus(caseData.caseId, 'in-consultation');
-    navigate(`/doctor/consultation/${caseData.caseId}`);
+    navigate(`/doctor/consultation/${caseId}`);
   };
 
   const handleResumeConsultation = () => {
-    navigate(`/doctor/consultation/${caseData.caseId}`);
+    navigate(`/doctor/consultation/${caseId}`);
   };
 
   const handleViewSummary = () => {
-    navigate(`/doctor/case/${caseData.caseId}/summary`);
+    navigate(`/doctor/case/${caseId}/summary`);
   };
 
   const getStatusBadge = () => {
@@ -102,6 +172,9 @@ export default function CaseDetail() {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-black text-slate-800">{caseData.patientName}</h1>
+                {tokenNumber && (
+                  <span className="font-mono text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-md">Token #{tokenNumber}</span>
+                )}
                 <span className="font-mono text-sm font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded-md">{caseData.caseId}</span>
               </div>
               <div className="flex items-center gap-4 text-slate-500 font-medium text-sm mt-1">

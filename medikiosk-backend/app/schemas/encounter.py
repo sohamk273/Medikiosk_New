@@ -1,24 +1,11 @@
-"""Encounter and QueueEntry Pydantic schemas."""
+"""Encounter Pydantic schemas."""
 import uuid
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.encounter import EncounterStatus, EncounterPriority
 from app.models.queue import QueueStatus
-
-
-class QueueEntryRead(BaseModel):
-    id: uuid.UUID
-    encounter_id: uuid.UUID
-    token_number: int
-    queue_status: QueueStatus
-    priority: EncounterPriority
-    queued_at: datetime
-    called_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class EncounterBase(BaseModel):
@@ -27,8 +14,15 @@ class EncounterBase(BaseModel):
     red_flag_triggered: bool = False
 
 
-class EncounterCreate(EncounterBase):
+class EncounterCreate(BaseModel):
     patient_id: uuid.UUID
+    priority: Optional[EncounterPriority] = EncounterPriority.NORMAL
+
+
+class EncounterUpdate(BaseModel):
+    chief_complaint: Optional[str] = None
+    priority: Optional[EncounterPriority] = None
+    red_flag_triggered: Optional[bool] = None
 
 
 class EncounterRead(EncounterBase):
@@ -42,3 +36,33 @@ class EncounterRead(EncounterBase):
     closed_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class EncounterPatientSummary(BaseModel):
+    id: uuid.UUID
+    uhid: str
+    full_name: str
+    age: Optional[int] = None
+    gender: str
+    mobile: Optional[str] = None
+
+
+class EncounterDetailResponse(BaseModel):
+    encounter: EncounterRead
+    patient: EncounterPatientSummary
+    queue_entry_id: Optional[uuid.UUID] = None
+    token_number: Optional[int] = None
+    queue_status: Optional[QueueStatus] = None
+
+
+class EncounterSubmitResponse(BaseModel):
+    """Payload returned upon successful kiosk encounter submission."""
+    success: bool
+    patient_id: uuid.UUID
+    uhid: str
+    encounter_id: uuid.UUID
+    encounter_number: str
+    queue_entry_id: uuid.UUID
+    token_number: int
+    queue_status: QueueStatus
+    submitted_at: datetime

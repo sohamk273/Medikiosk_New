@@ -1,28 +1,77 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, AlertCircle, Clock, User, FileText, ChevronRight } from 'lucide-react';
-import { MockDoctorCaseProvider } from '@/services/doctor/MockDoctorCaseProvider';
-import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
-import { usePatientSession } from '@/features/patient/PatientSessionContext';
+import { Search, AlertCircle, Clock, User, FileText, ChevronRight, RefreshCw } from 'lucide-react';
+import { apiFetchSafe } from '@/services/api/client';
 
 type FilterType = 'All' | 'Waiting' | 'In Consultation' | 'Completed' | 'Closed' | 'Attention Required';
 
+export interface DoctorQueueItem {
+  caseId: string;
+  tokenNumber: number;
+  encounterNumber: string;
+  patientName: string;
+  age: string | number;
+  gender: string;
+  chiefComplaint?: string;
+  redFlagTriggered: boolean;
+  submittedAt: string;
+  status: 'waiting' | 'in-consultation' | 'completed' | 'closed';
+  consultation?: { status: string };
+}
+
 export default function DoctorQueue() {
   const navigate = useNavigate();
-  const session = usePatientSession();
   
-  const [cases, setCases] = useState<DoctorCase[]>(() => {
-    MockDoctorCaseProvider.injectPatientSession(session);
-    return MockDoctorCaseProvider.getCases();
-  });
+  const [cases, setCases] = useState<DoctorQueueItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<FilterType>('All');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchQueue = async (manual = false) => {
+    if (manual) setIsRefreshing(true);
+    try {
+      const res = await apiFetchSafe<any[]>('/queue/today');
+      if (res.ok && Array.isArray(res.data)) {
+        const mapped: DoctorQueueItem[] = res.data.map((item) => {
+          let uiStatus: 'waiting' | 'in-consultation' | 'completed' | 'closed' = 'waiting';
+          const qs = (item.queue_status || '').toUpperCase();
+          if (qs === 'CALLED' || qs === 'IN_CONSULTATION') {
+            uiStatus = 'in-consultation';
+          } else if (qs === 'COMPLETED') {
+            uiStatus = 'completed';
+          } else if (qs === 'CANCELLED' || qs === 'NO_SHOW') {
+            uiStatus = 'closed';
+          }
+
+          return {
+            caseId: item.encounter_id,
+            tokenNumber: item.token_number,
+            encounterNumber: item.encounter_number,
+            patientName: item.patient_name,
+            age: item.age ?? '—',
+            gender: item.gender,
+            chiefComplaint: item.chief_complaint,
+            redFlagTriggered: item.red_flag_triggered || item.priority === 'EMERGENCY',
+            submittedAt: item.queued_at,
+            status: uiStatus,
+          };
+        });
+        setCases(mapped);
+      }
+    } catch (err) {
+      console.error('Failed to fetch OPD queue from backend:', err);
+    } finally {
+      if (manual) setTimeout(() => setIsRefreshing(false), 400);
+    }
+  };
 
   useEffect(() => {
-    // Inject the patient session if it changes
-    MockDoctorCaseProvider.injectPatientSession(session);
-    setCases(MockDoctorCaseProvider.getCases());
-  }, [session]);
+    fetchQueue();
+    const timer = setInterval(() => {
+      fetchQueue();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
 
   const filteredCases = useMemo(() => {
     let result = cases;
@@ -39,8 +88,10 @@ export default function DoctorQueue() {
       const lowerSearch = searchTerm.toLowerCase();
       result = result.filter(c => 
         c.caseId.toLowerCase().includes(lowerSearch) ||
+        (c.encounterNumber && c.encounterNumber.toLowerCase().includes(lowerSearch)) ||
         c.patientName.toLowerCase().includes(lowerSearch) ||
-        (c.chiefComplaint && c.chiefComplaint.toLowerCase().includes(lowerSearch))
+        (c.chiefComplaint && c.chiefComplaint.toLowerCase().includes(lowerSearch)) ||
+        String(c.tokenNumber).includes(lowerSearch)
       );
     }
 
@@ -54,7 +105,7 @@ export default function DoctorQueue() {
     closed: cases.filter(c => c.status === 'closed').length,
   };
 
-  const getStatusDisplay = (status: DoctorCase['status']) => {
+  const getStatusDisplay = (status: DoctorQueueItem['status']) => {
     switch (status) {
       case 'waiting': return <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">WAITING</span>;
       case 'in-consultation': return <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">IN CONSULTATION</span>;
@@ -72,7 +123,14 @@ export default function DoctorQueue() {
           <p className="text-slate-500 font-medium">ओपीडी कतार</p>
         </div>
         
-        <div className="flex gap-4">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => fetchQueue(true)}
+            title="Refresh queue"
+            className={`w-10 h-10 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center transition-all shadow-sm ${isRefreshing ? 'animate-spin text-[#0D9488]' : 'text-slate-500'}`}
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
           <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col items-center min-w-28 shadow-sm">
             <span className="text-3xl font-black text-amber-500">{stats.waiting}</span>
             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">WAITING</span>
@@ -98,7 +156,7 @@ export default function DoctorQueue() {
             <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search Case ID, Patient Name, or Complaint..." 
+              placeholder="Search Case ID, Token #, Patient Name, or Complaint..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium"
@@ -140,7 +198,8 @@ export default function DoctorQueue() {
                   
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">{c.caseId}</span>
+                      <span className="font-mono text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-md">Token #{c.tokenNumber}</span>
+                      <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">{c.encounterNumber || c.caseId}</span>
                       {getStatusDisplay(c.status)}
                       {c.consultation?.status === 'draft' && c.status !== 'completed' && (
                         <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">DRAFT SAVED</span>

@@ -1,8 +1,22 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { SidebarNav } from './SidebarNav';
 import { TopBar } from './TopBar';
+import { useDoctorAuth } from '@/features/auth/DoctorAuthContext';
 
 export function EMRLayout() {
+  const { isAuthenticated } = useDoctorAuth();
+  const location = useLocation();
+
+  // Allow login page to render without sidebar navigation
+  if (location.pathname === '/doctor/login') {
+    return <Outlet />;
+  }
+
+  // Route guard: Redirect unauthenticated visits to doctor login
+  if (!isAuthenticated) {
+    return <Navigate to="/doctor/login" replace state={{ from: location }} />;
+  }
+
   return (
     <div className="min-h-screen bg-background flex font-sans">
       <SidebarNav />

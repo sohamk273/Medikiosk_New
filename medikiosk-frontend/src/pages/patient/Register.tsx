@@ -8,6 +8,7 @@ import { Minus, Plus, Wand2, Phone } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { NumericKeypad } from '@/components/kiosk/NumericKeypad';
 import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
+import { apiFetch } from '@/services/api/client';
 
 const formSchema = z.object({
   name: z.string().min(2, 'Name is required'),
@@ -23,7 +24,8 @@ type FormValues = z.infer<typeof formSchema>;
 
 export default function Register() {
   const navigate = useNavigate();
-  const { setPatient } = usePatientSession();
+  const { setPatient, setPatientId, setUhid, setEncounterId, encounterId } = usePatientSession();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [activeField, setActiveField] = useState<'mobile' | 'age'>('mobile');
 
@@ -58,14 +60,68 @@ export default function Register() {
     setValue(activeField, '', { shouldValidate: true });
   };
 
-  const onSubmit = (data: FormValues) => {
-    setPatient({
-      name: data.name,
-      age: data.age,
-      gender: data.gender,
-      mobile: data.mobile,
-    });
-    navigate('/patient/consent'); // Or wherever the next step goes
+  const onSubmit = async (data: FormValues) => {
+    setIsSubmitting(true);
+    try {
+      setPatient({
+        name: data.name,
+        age: data.age,
+        gender: data.gender,
+        mobile: data.mobile,
+      });
+
+      // 1. Search or create patient on backend
+      let patientData: any = null;
+      const searchRes = await apiFetch<any>(`/patients/search?identifier_type=PHONE&identifier_value=${encodeURIComponent(data.mobile)}`);
+      if (searchRes.ok && searchRes.data) {
+        patientData = searchRes.data;
+      } else {
+        const createRes = await apiFetch<any>('/patients', {
+          method: 'POST',
+          body: JSON.stringify({
+            full_name: data.name,
+            age: parseInt(data.age) || 30,
+            gender: data.gender.toLowerCase(),
+          }),
+        });
+        if (createRes.ok && createRes.data) {
+          patientData = createRes.data;
+          // Associate PHONE identity
+          await apiFetch(`/patients/${patientData.id}/identities`, {
+            method: 'POST',
+            body: JSON.stringify({
+              identity_type: 'PHONE',
+              identity_value: data.mobile,
+              is_verified: true,
+            }),
+          });
+        }
+      }
+
+      if (patientData) {
+        setPatientId(patientData.id);
+        setUhid(patientData.uhid);
+
+        // 2. Create an encounter if not already created
+        if (!encounterId) {
+          const encRes = await apiFetch<any>('/encounters', {
+            method: 'POST',
+            body: JSON.stringify({
+              patient_id: patientData.id,
+              priority: 'NORMAL',
+            }),
+          });
+          if (encRes.ok && encRes.data) {
+            setEncounterId(encRes.data.id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to sync patient with backend:', err);
+    } finally {
+      setIsSubmitting(false);
+      navigate('/patient/consent');
+    }
   };
 
   const handleDemoFill = () => {
@@ -213,7 +269,7 @@ export default function Register() {
           </div>
           
           {/* Hidden Submit to allow imperative submission from bottom bar */}
-          <button type="submit" id="register-submit-btn" className="hidden">Submit</button>
+          <button type="submit" id="register-submit-btn" disabled={isSubmitting} className="hidden">Submit</button>
         </div>
 
         {/* Right Side: Keypad & Sandbox Helper */}

@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgrespassword@localhost:5432/medikiosk"
     DATABASE_URL_SYNC: str = "postgresql+psycopg://postgres:postgrespassword@localhost:5432/medikiosk"
 
+    # Security & JWT
+    JWT_SECRET_KEY: str = "medikiosk-development-super-secret-key-for-jwt-signing-2026-sih"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 12  # 12 hours
+
     # MinIO Object Storage
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"

@@ -6,11 +6,12 @@ import {
 } from 'lucide-react';
 import { MockDoctorCaseProvider } from '@/services/doctor/MockDoctorCaseProvider';
 import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
-import { usePatientSession } from '@/features/patient/PatientSessionContext';
+import { useDoctorAuth } from '@/features/auth/DoctorAuthContext';
+import { apiFetchSafe } from '@/services/api/client';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const session = usePatientSession();
+  const { user } = useDoctorAuth();
 
   const [cases, setCases] = useState<DoctorCase[]>([]);
   const [attentionCases, setAttentionCases] = useState<DoctorCase[]>([]);
@@ -20,25 +21,69 @@ export default function Dashboard() {
   const [recentCompleted, setRecentCompleted] = useState<DoctorCase[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const loadData = () => {
-    MockDoctorCaseProvider.injectPatientSession(session);
-    setCases(MockDoctorCaseProvider.getCases());
-    setAttentionCases(MockDoctorCaseProvider.getAttentionCases());
-    setActiveConsultations(MockDoctorCaseProvider.getActiveConsultations());
-    setCompletedCases(MockDoctorCaseProvider.getCases().filter(c => c.status === 'completed' || c.status === 'closed'));
-    setDraftConsultations(MockDoctorCaseProvider.getDraftConsultations());
-    setRecentCompleted(MockDoctorCaseProvider.getRecentlyCompletedCases(3));
+  const loadData = async () => {
+    try {
+      const res = await apiFetchSafe<any[]>('/queue/today');
+      if (res.ok && Array.isArray(res.data)) {
+        const mapped: DoctorCase[] = res.data.map((item) => {
+          let uiStatus: 'waiting' | 'in-consultation' | 'completed' | 'closed' = 'waiting';
+          const qs = (item.queue_status || '').toUpperCase();
+          if (qs === 'CALLED' || qs === 'IN_CONSULTATION') {
+            uiStatus = 'in-consultation';
+          } else if (qs === 'COMPLETED') {
+            uiStatus = 'completed';
+          } else if (qs === 'CANCELLED' || qs === 'NO_SHOW') {
+            uiStatus = 'closed';
+          }
+
+          return {
+            caseId: item.encounter_id,
+            patientName: item.patient_name,
+            age: item.age ?? 0,
+            gender: item.gender,
+            mobile: item.mobile,
+            chiefComplaint: item.chief_complaint,
+            voiceResponses: [],
+            ayushResponses: [],
+            documents: [],
+            redFlagTriggered: item.red_flag_triggered || item.priority === 'EMERGENCY',
+            submittedAt: item.queued_at,
+            status: uiStatus,
+          };
+        });
+
+        // Use backend cases if available, otherwise show demo cases
+        const effectiveCases = mapped.length > 0 ? mapped : MockDoctorCaseProvider.getCases();
+        setCases(effectiveCases);
+        setAttentionCases(effectiveCases.filter(c => c.redFlagTriggered && c.status !== 'completed' && c.status !== 'closed'));
+        setActiveConsultations(effectiveCases.filter(c => c.status === 'in-consultation'));
+        setCompletedCases(effectiveCases.filter(c => c.status === 'completed' || c.status === 'closed'));
+        setDraftConsultations(MockDoctorCaseProvider.getDraftConsultations());
+        setRecentCompleted(effectiveCases.filter(c => c.status === 'completed' || c.status === 'closed').slice(0, 3));
+      } else {
+        const fallback = MockDoctorCaseProvider.getCases();
+        setCases(fallback);
+        setAttentionCases(MockDoctorCaseProvider.getAttentionCases());
+        setActiveConsultations(MockDoctorCaseProvider.getActiveConsultations());
+        setCompletedCases(fallback.filter(c => c.status === 'completed' || c.status === 'closed'));
+        setDraftConsultations(MockDoctorCaseProvider.getDraftConsultations());
+        setRecentCompleted(MockDoctorCaseProvider.getRecentlyCompletedCases(3));
+      }
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err);
+    }
   };
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+    const interval = setInterval(loadData, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    loadData();
-    setTimeout(() => setIsRefreshing(false), 500);
+    await loadData();
+    setTimeout(() => setIsRefreshing(false), 400);
   };
 
   const stats = {
@@ -62,18 +107,13 @@ export default function Dashboard() {
   };
 
   const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  const doctorName = user?.display_name || 'Dr. Priya Sharma';
 
   // Latest kiosk handoff case
   let latestKioskCase: DoctorCase | null = null;
-  if (session.submission.status === 'success' && session.submission.caseId) {
-    latestKioskCase = MockDoctorCaseProvider.getCaseById(session.submission.caseId) || null;
+  if (cases.length > 0) {
+    latestKioskCase = [...cases].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())[0];
   }
-  if (!latestKioskCase && cases.length > 0) {
-    // deterministic fallback
-    latestKioskCase = cases.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())[0];
-  }
-
-
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
@@ -81,7 +121,7 @@ export default function Dashboard() {
       {/* A. PAGE HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Good morning, Dr. Priya Sharma</h1>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Good morning, {doctorName}</h1>
           <p className="text-slate-500 font-medium mt-1">आज के ओपीडी का संक्षिप्त विवरण</p>
         </div>
         

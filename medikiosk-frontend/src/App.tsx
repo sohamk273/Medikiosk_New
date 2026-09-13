@@ -2,11 +2,15 @@ import { RouterProvider } from 'react-router-dom';
 import { router } from './app/router';
 import { PatientSessionProvider } from './features/patient/PatientSessionContext';
 
+import { DoctorAuthContextProvider } from './features/auth/DoctorAuthContext';
+
 function App() {
   return (
-    <PatientSessionProvider>
-      <RouterProvider router={router} />
-    </PatientSessionProvider>
+    <DoctorAuthContextProvider>
+      <PatientSessionProvider>
+        <RouterProvider router={router} />
+      </PatientSessionProvider>
+    </DoctorAuthContextProvider>
   );
 }
 

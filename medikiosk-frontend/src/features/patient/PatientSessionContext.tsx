@@ -255,6 +255,13 @@ export interface PatientSessionState {
   submission: SubmissionState;
   consultation: ConsultationState;
   caseClosure: CaseClosureState;
+
+  // Backend Relational Identifiers (Stage 2)
+  patientId?: string;
+  uhid?: string;
+  encounterId?: string;
+  queueEntryId?: string;
+  tokenNumber?: number;
 }
 
 export interface PatientSessionContextType extends PatientSessionState {
@@ -268,6 +275,13 @@ export interface PatientSessionContextType extends PatientSessionState {
   setConsent: (consent: ConsentState) => void;
   setChiefComplaint: (complaint: ChiefComplaintState) => void;
   clearSession: () => void;
+
+  // Backend Relational setters (Stage 2)
+  setPatientId: (id?: string) => void;
+  setUhid: (uhid?: string) => void;
+  setEncounterId: (id?: string) => void;
+  setQueueEntryId: (id?: string) => void;
+  setTokenNumber: (token?: number) => void;
 
   // Slice 4: Voice Intake setters
   setActiveVoiceInput: (method: VoiceInputMethod) => void;
@@ -341,6 +355,11 @@ const defaultState: PatientSessionState = {
   submission: defaultSubmissionState,
   consultation: defaultConsultationState,
   caseClosure: defaultCaseClosureState,
+  patientId: undefined,
+  uhid: undefined,
+  encounterId: undefined,
+  queueEntryId: undefined,
+  tokenNumber: undefined,
 };
 
 const PatientSessionContext = createContext<PatientSessionContextType | undefined>(undefined);
@@ -379,6 +398,22 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, chiefComplaint }));
 
   const clearSession = () => setState(defaultState);
+
+  // Stage 2 Relational setters
+  const setPatientId = (patientId?: string) =>
+    setState(s => ({ ...s, patientId }));
+
+  const setUhid = (uhid?: string) =>
+    setState(s => ({ ...s, uhid }));
+
+  const setEncounterId = (encounterId?: string) =>
+    setState(s => ({ ...s, encounterId }));
+
+  const setQueueEntryId = (queueEntryId?: string) =>
+    setState(s => ({ ...s, queueEntryId }));
+
+  const setTokenNumber = (tokenNumber?: number) =>
+    setState(s => ({ ...s, tokenNumber }));
 
   // ─── Slice 4: Voice Intake setters ──────────────────────────────────────
 
@@ -753,6 +788,11 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
       setConsent,
       setChiefComplaint,
       clearSession,
+      setPatientId,
+      setUhid,
+      setEncounterId,
+      setQueueEntryId,
+      setTokenNumber,
       setActiveVoiceInput,
       setActiveTranscript,
       setActiveSelectedOption,

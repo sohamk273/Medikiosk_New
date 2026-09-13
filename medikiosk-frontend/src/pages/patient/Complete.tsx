@@ -3,7 +3,7 @@ import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { CheckCircle2, User, Activity, FileText, BellRing, HelpCircle, FileCheck } from 'lucide-react';
 
 export default function Complete() {
-  const { language, patient, abhaId, chiefComplaint, documentIntake, submission } = usePatientSession();
+  const { language, patient, abhaId, chiefComplaint, documentIntake, submission, tokenNumber, uhid } = usePatientSession();
   const [sahayakNotified, setSahayakNotified] = useState(false);
   const [isDone, setIsDone] = useState(false);
 
@@ -49,11 +49,16 @@ export default function Complete() {
         </p>
         <div className="p-6 bg-white border border-slate-200 rounded-3xl inline-block shadow-sm">
           <p className="text-sm text-slate-500 mb-1 uppercase tracking-wider font-bold">
-            {language === 'hi' ? 'OPD केस नंबर' : 'OPD CASE NUMBER'}
+            {tokenNumber ? (language === 'hi' ? 'OPD टोकन' : 'OPD TOKEN') : (language === 'hi' ? 'OPD केस नंबर' : 'OPD CASE NUMBER')}
           </p>
-          <p className="text-2xl font-black text-primary tracking-tight">
-            {submission.caseId}
+          <p className="text-3xl font-black text-primary tracking-tight">
+            {tokenNumber ? `Token #${tokenNumber}` : submission.caseId}
           </p>
+          {tokenNumber && (
+            <p className="text-xs text-slate-400 font-mono mt-1">
+              Case: {submission.caseId}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -84,11 +89,16 @@ export default function Complete() {
           <div className="bg-gradient-to-br from-[#0D9488] to-[#0F766E] rounded-3xl p-8 shadow-lg text-white">
             <p className="text-teal-100 uppercase tracking-widest font-bold text-sm mb-2 flex items-center gap-2">
               <FileCheck className="w-5 h-5" />
-              {language === 'hi' ? 'OPD केस नंबर' : 'OPD CASE NUMBER'}
+              {tokenNumber ? (language === 'hi' ? 'OPD टोकन संख्या' : 'OPD TOKEN NUMBER') : (language === 'hi' ? 'OPD केस नंबर' : 'OPD CASE NUMBER')}
             </p>
-            <h2 className="text-4xl sm:text-5xl font-black tracking-tight mb-4">
-              {submission.caseId || 'PROCESSING...'}
+            <h2 className="text-4xl sm:text-5xl font-black tracking-tight mb-2">
+              {tokenNumber ? `Token #${tokenNumber}` : submission.caseId || 'PROCESSING...'}
             </h2>
+            {tokenNumber && (
+              <p className="text-teal-100 font-mono text-sm mb-4">
+                Case: {submission.caseId} {uhid ? `• UHID: ${uhid}` : ''}
+              </p>
+            )}
             <div className="bg-black/10 rounded-xl p-4 inline-block">
               <p className="text-teal-50 font-medium">
                 {language === 'hi' 

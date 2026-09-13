@@ -2,14 +2,14 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.models.identity import IdentityType
 
 
 class PatientIdentityBase(BaseModel):
     identity_type: IdentityType
-    identity_value: str = Field(..., max_length=50)
+    identity_value: str = Field(..., min_length=1, max_length=50)
 
 
 class PatientIdentityCreate(PatientIdentityBase):
@@ -49,3 +49,13 @@ class PatientRead(PatientBase):
     identities: List[PatientIdentityRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def uhid(self) -> str:
+        """Alias for patient_uhid for frontend convenience."""
+        return self.patient_uhid
+
+
+class PatientLookupResponse(BaseModel):
+    patient: PatientRead

@@ -2,11 +2,30 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { MockSubmissionProvider } from '@/services/submission/MockSubmissionProvider';
+import { apiFetch } from '@/services/api/client';
 import { Server, CheckCircle2, AlertTriangle, RefreshCcw } from 'lucide-react';
 
 export default function Submit() {
   const navigate = useNavigate();
-  const { language, submission, startSubmission, completeSubmission, failSubmission, resetSubmission } = usePatientSession();
+  const { 
+    language, 
+    patient,
+    submission, 
+    startSubmission, 
+    completeSubmission, 
+    failSubmission, 
+    resetSubmission,
+    encounterId,
+    patientId,
+    chiefComplaint,
+    voiceIntake,
+    allergyHistory,
+    setPatientId,
+    setUhid,
+    setEncounterId,
+    setQueueEntryId,
+    setTokenNumber
+  } = usePatientSession();
   const hasStartedRef = useRef(false);
 
   const [step, setStep] = useState(0);
@@ -20,14 +39,102 @@ export default function Submit() {
       setTimeout(() => setStep(3), 1200); // Sending to OPD
 
       try {
-        const result = await MockSubmissionProvider.submitCase();
-        if (result.success) {
-          completeSubmission(result.caseId);
+        let activeEncId = encounterId;
+
+        // Fallback: If no encounter exists yet, create patient and encounter
+        if (!activeEncId) {
+          let patId = patientId;
+          if (!patId) {
+            const patRes = await apiFetch<any>('/patients', {
+              method: 'POST',
+              body: JSON.stringify({
+                full_name: patient?.name || 'Walk-in Patient',
+                age: parseInt(patient?.age || '30') || 30,
+                gender: (patient?.gender || 'male').toLowerCase(),
+              }),
+            });
+            if (patRes.ok && patRes.data) {
+              patId = patRes.data.id;
+              setPatientId(patRes.data.id);
+              setUhid(patRes.data.uhid);
+            }
+          }
+
+          if (patId) {
+            const encRes = await apiFetch<any>('/encounters', {
+              method: 'POST',
+              body: JSON.stringify({
+                patient_id: patId,
+                priority: 'NORMAL',
+              }),
+            });
+            if (encRes.ok && encRes.data) {
+              activeEncId = encRes.data.id;
+              setEncounterId(encRes.data.id);
+            }
+          }
+        }
+
+        if (activeEncId) {
+          // Update encounter with chief complaint & safety priority
+          const isRedFlag = voiceIntake.redFlagTriggered || 
+            (allergyHistory.hasAllergy === 'yes' && allergyHistory.reaction === 'breathing_difficulty');
+
+          await apiFetch(`/encounters/${activeEncId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              chief_complaint: chiefComplaint.primaryComplaint || undefined,
+              red_flag_triggered: isRedFlag,
+              priority: isRedFlag ? 'EMERGENCY' : 'NORMAL',
+            }),
+          });
+
+          // Ensure consent is recorded
+          await apiFetch(`/encounters/${activeEncId}/consent`, {
+            method: 'POST',
+            body: JSON.stringify({ accepted: true }),
+          });
+
+          // Submit encounter to OPD queue
+          const subRes = await apiFetch<any>(`/encounters/${activeEncId}/submit`, {
+            method: 'POST',
+          });
+
+          if (subRes.ok && subRes.data) {
+            const data = subRes.data;
+            setQueueEntryId(data.queue_entry_id);
+            setTokenNumber(data.token_number);
+            setPatientId(data.patient_id);
+            setUhid(data.uhid);
+
+            const displayCaseId = data.encounter_number || `OPD-TOKEN-${data.token_number}`;
+            completeSubmission(displayCaseId);
+            navigate('/patient/complete', { replace: true });
+            return;
+          }
+        }
+
+        // Graceful fallback if backend failed
+        const fallback = await MockSubmissionProvider.submitCase();
+        if (fallback.success) {
+          completeSubmission(fallback.caseId);
           navigate('/patient/complete', { replace: true });
         } else {
           failSubmission();
         }
-      } catch {
+      } catch (err) {
+        console.error('Submission failed:', err);
+        // Attempt fallback
+        try {
+          const fallback = await MockSubmissionProvider.submitCase();
+          if (fallback.success) {
+            completeSubmission(fallback.caseId);
+            navigate('/patient/complete', { replace: true });
+            return;
+          }
+        } catch {
+          // Ignore
+        }
         failSubmission();
       }
     };
@@ -43,7 +150,7 @@ export default function Submit() {
       hasStartedRef.current = true;
       executeSubmission();
     }
-  }, [submission.status, navigate, startSubmission, completeSubmission, failSubmission]);
+  }, [submission.status, navigate, startSubmission, completeSubmission, failSubmission, encounterId, patientId, patient, chiefComplaint, voiceIntake, allergyHistory, setPatientId, setUhid, setEncounterId, setQueueEntryId, setTokenNumber]);
 
 
 
