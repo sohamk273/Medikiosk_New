@@ -1,22 +1,41 @@
-import { CheckCircle2, ShieldCheck, FileText, Activity, Stethoscope, Mic, XCircle } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, ShieldCheck, FileText, Activity, Stethoscope, Mic, XCircle, AlertCircle } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
 import { apiFetch } from '@/services/api/client';
 
 export default function Consent() {
   const { consent, setConsent, encounterId } = usePatientSession();
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const toggleConsent = async (accepted: boolean) => {
-    setConsent({ accepted, timestamp: new Date().toISOString() });
-    if (accepted && encounterId) {
-      try {
-        await apiFetch(`/encounters/${encounterId}/consent`, {
-          method: 'POST',
-          body: JSON.stringify({ accepted: true }),
-        });
-      } catch (err) {
-        console.error('Failed to persist consent to backend:', err);
-      }
+    if (!accepted) {
+      setConsent({ accepted: false, timestamp: new Date().toISOString() });
+      setError(null);
+      return;
+    }
+
+    if (!encounterId) {
+      setError('No active visit record found. Please return to registration.');
+      setConsent({ accepted: false });
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      await apiFetch(`/encounters/${encounterId}/consent`, {
+        method: 'POST',
+        body: JSON.stringify({ accepted: true }),
+      });
+      setConsent({ accepted: true, timestamp: new Date().toISOString() });
+    } catch (err: any) {
+      console.error('Failed to persist consent to backend:', err);
+      setError(err?.message || 'Failed to record consent on backend server. Please try again.');
+      setConsent({ accepted: false });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -106,6 +125,13 @@ export default function Consent() {
         </div>
       </div>
 
+      {error && (
+        <div className="mt-6 bg-red-50 border-2 border-red-400 text-red-700 px-6 py-4 rounded-2xl flex items-center gap-3">
+          <AlertCircle className="w-6 h-6 shrink-0" />
+          <span className="font-bold text-base">{error}</span>
+        </div>
+      )}
+
       <div className="mt-8 bg-[#EFF6FF] rounded-3xl p-6 flex items-center justify-between border border-[#BFDBFE]">
         <div className="flex items-center gap-4">
           <ShieldCheck className="w-10 h-10 text-[#2563EB]" />
@@ -130,15 +156,18 @@ export default function Consent() {
           </button>
 
           <button 
+            disabled={isSaving}
             onClick={() => toggleConsent(true)}
             className={`px-6 py-4 rounded-xl border-2 flex items-center gap-2 font-bold text-lg transition-colors ${
+              isSaving ? 'opacity-70 cursor-wait' : ''
+            } ${
               consent.accepted === true 
                 ? 'border-[#064E3B] bg-[#064E3B] text-white' 
                 : 'border-[#064E3B] bg-[#064E3B]/90 text-white hover:bg-[#064E3B]'
             }`}
           >
             <CheckCircle2 className={`w-6 h-6 ${consent.accepted ? 'text-white' : 'text-white/80'}`} />
-            I Understand & Give Consent 
+            {isSaving ? 'Recording Consent...' : 'I Understand & Give Consent'} 
             <span className="ml-2">→</span>
           </button>
         </div>

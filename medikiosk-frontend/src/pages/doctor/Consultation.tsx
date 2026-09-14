@@ -9,6 +9,7 @@ import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import type { PatientDocument } from '@/features/patient/PatientSessionContext';
 import { Modal } from '@/components/ui/Modal';
+import { apiFetch } from '@/services/api/client';
 
 export default function Consultation() {
   const { caseId } = useParams();
@@ -112,8 +113,15 @@ export default function Consultation() {
     }
   };
 
-  const handleConfirmFinalize = () => {
+  const handleConfirmFinalize = async () => {
     if (!caseId) return;
+    try {
+      await apiFetch(`/encounters/${caseId}/complete`, {
+        method: 'POST',
+      });
+    } catch (err) {
+      console.error('Failed to complete encounter on backend:', err);
+    }
     session.finalizeConsultation();
     const finalizedConsultation = { ...session.consultation, status: 'finalized' as const, finalizedAt: new Date().toISOString() };
     MockDoctorCaseProvider.saveConsultation(caseId, finalizedConsultation);

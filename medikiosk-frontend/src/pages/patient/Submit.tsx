@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import { MockSubmissionProvider } from '@/services/submission/MockSubmissionProvider';
 import { apiFetch } from '@/services/api/client';
 import { Server, CheckCircle2, AlertTriangle, RefreshCcw } from 'lucide-react';
 
@@ -49,15 +48,13 @@ export default function Submit() {
               method: 'POST',
               body: JSON.stringify({
                 full_name: patient?.name || 'Walk-in Patient',
-                age: parseInt(patient?.age || '30') || 30,
+                age: parseInt(patient?.age || '30', 10) || 30,
                 gender: (patient?.gender || 'male').toLowerCase(),
               }),
             });
-            if (patRes.ok && patRes.data) {
-              patId = patRes.data.id;
-              setPatientId(patRes.data.id);
-              setUhid(patRes.data.uhid);
-            }
+            patId = patRes.id;
+            setPatientId(patRes.id);
+            setUhid(patRes.uhid || patRes.patient_uhid);
           }
 
           if (patId) {
@@ -68,73 +65,54 @@ export default function Submit() {
                 priority: 'NORMAL',
               }),
             });
-            if (encRes.ok && encRes.data) {
-              activeEncId = encRes.data.id;
-              setEncounterId(encRes.data.id);
-            }
+            activeEncId = encRes.id;
+            setEncounterId(encRes.id);
           }
         }
 
-        if (activeEncId) {
-          // Update encounter with chief complaint & safety priority
-          const isRedFlag = voiceIntake.redFlagTriggered || 
-            (allergyHistory.hasAllergy === 'yes' && allergyHistory.reaction === 'breathing_difficulty');
-
-          await apiFetch(`/encounters/${activeEncId}`, {
-            method: 'PATCH',
-            body: JSON.stringify({
-              chief_complaint: chiefComplaint.primaryComplaint || undefined,
-              red_flag_triggered: isRedFlag,
-              priority: isRedFlag ? 'EMERGENCY' : 'NORMAL',
-            }),
-          });
-
-          // Ensure consent is recorded
-          await apiFetch(`/encounters/${activeEncId}/consent`, {
-            method: 'POST',
-            body: JSON.stringify({ accepted: true }),
-          });
-
-          // Submit encounter to OPD queue
-          const subRes = await apiFetch<any>(`/encounters/${activeEncId}/submit`, {
-            method: 'POST',
-          });
-
-          if (subRes.ok && subRes.data) {
-            const data = subRes.data;
-            setQueueEntryId(data.queue_entry_id);
-            setTokenNumber(data.token_number);
-            setPatientId(data.patient_id);
-            setUhid(data.uhid);
-
-            const displayCaseId = data.encounter_number || `OPD-TOKEN-${data.token_number}`;
-            completeSubmission(displayCaseId);
-            navigate('/patient/complete', { replace: true });
-            return;
-          }
+        if (!activeEncId) {
+          throw new Error('No active clinical visit record found.');
         }
 
-        // Graceful fallback if backend failed
-        const fallback = await MockSubmissionProvider.submitCase();
-        if (fallback.success) {
-          completeSubmission(fallback.caseId);
+        // 1. Update encounter with chief complaint & safety priority
+        const isRedFlag = voiceIntake.redFlagTriggered || 
+          (allergyHistory.hasAllergy === 'yes' && allergyHistory.reaction === 'breathing_difficulty');
+
+        await apiFetch(`/encounters/${activeEncId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            chief_complaint: chiefComplaint.primaryComplaint || undefined,
+            red_flag_triggered: isRedFlag,
+            priority: isRedFlag ? 'EMERGENCY' : 'NORMAL',
+          }),
+        });
+
+        // 2. Ensure consent is recorded
+        await apiFetch(`/encounters/${activeEncId}/consent`, {
+          method: 'POST',
+          body: JSON.stringify({ accepted: true }),
+        });
+
+        // 3. Submit encounter to OPD queue
+        const subRes = await apiFetch<any>(`/encounters/${activeEncId}/submit`, {
+          method: 'POST',
+        });
+
+        if (subRes && subRes.queue_entry_id) {
+          setQueueEntryId(subRes.queue_entry_id);
+          setTokenNumber(subRes.token_number);
+          setPatientId(subRes.patient_id);
+          setUhid(subRes.uhid);
+
+          const displayCaseId = subRes.encounter_number || `OPD-TOKEN-${subRes.token_number}`;
+          completeSubmission(displayCaseId);
           navigate('/patient/complete', { replace: true });
-        } else {
-          failSubmission();
+          return;
         }
-      } catch (err) {
+
+        throw new Error('Queue submission response did not contain expected token data.');
+      } catch (err: any) {
         console.error('Submission failed:', err);
-        // Attempt fallback
-        try {
-          const fallback = await MockSubmissionProvider.submitCase();
-          if (fallback.success) {
-            completeSubmission(fallback.caseId);
-            navigate('/patient/complete', { replace: true });
-            return;
-          }
-        } catch {
-          // Ignore
-        }
         failSubmission();
       }
     };

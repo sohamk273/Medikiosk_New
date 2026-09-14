@@ -82,16 +82,15 @@ export default function ChiefComplaint() {
   });
 
   const toggleSymptom = (id: string) => {
-    setSelectedIds(prev => {
-      const next = prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id];
-      // Sync to context
-      const labels = next.map(sid => {
-        const s = SYMPTOMS.find(sy => sy.id === sid);
-        return s ? `${s.hindi} (${s.english})` : sid;
-      });
-      setChiefComplaint({ primaryComplaint: labels.join(', ') });
-      return next;
+    const next = selectedIds.includes(id) 
+      ? selectedIds.filter(s => s !== id) 
+      : [...selectedIds, id];
+    setSelectedIds(next);
+    const labels = next.map(sid => {
+      const s = SYMPTOMS.find(sy => sy.id === sid);
+      return s ? `${s.hindi} (${s.english})` : sid;
     });
+    setChiefComplaint({ primaryComplaint: labels.join(', ') });
   };
 
   const selectedLabels = selectedIds.map(sid => {

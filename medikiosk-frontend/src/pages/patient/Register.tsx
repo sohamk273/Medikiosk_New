@@ -3,7 +3,7 @@ import { useForm, useWatch, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
-import { Minus, Plus, Wand2, Phone } from 'lucide-react';
+import { Minus, Plus, Wand2, Phone, AlertCircle } from 'lucide-react';
 
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { NumericKeypad } from '@/components/kiosk/NumericKeypad';
@@ -26,6 +26,7 @@ export default function Register() {
   const navigate = useNavigate();
   const { setPatient, setPatientId, setUhid, setEncounterId, encounterId } = usePatientSession();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
   
   const [activeField, setActiveField] = useState<'mobile' | 'age'>('mobile');
 
@@ -62,6 +63,7 @@ export default function Register() {
 
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
+    setApiError(null);
     try {
       setPatient({
         name: data.name,
@@ -70,57 +72,67 @@ export default function Register() {
         mobile: data.mobile,
       });
 
-      // 1. Search or create patient on backend
+      // 1. Search for existing patient by phone
       let patientData: any = null;
-      const searchRes = await apiFetch<any>(`/patients/search?identifier_type=PHONE&identifier_value=${encodeURIComponent(data.mobile)}`);
-      if (searchRes.ok && searchRes.data) {
-        patientData = searchRes.data;
-      } else {
-        const createRes = await apiFetch<any>('/patients', {
-          method: 'POST',
-          body: JSON.stringify({
-            full_name: data.name,
-            age: parseInt(data.age) || 30,
-            gender: data.gender.toLowerCase(),
-          }),
-        });
-        if (createRes.ok && createRes.data) {
-          patientData = createRes.data;
-          // Associate PHONE identity
+      try {
+        patientData = await apiFetch<any>(
+          `/patients/search?identity_type=PHONE&identity_value=${encodeURIComponent(data.mobile)}`
+        );
+      } catch (err: any) {
+        if (err.status === 404) {
+          // CASE B: Patient does not exist -> Register new patient master record
+          patientData = await apiFetch<any>('/patients', {
+            method: 'POST',
+            body: JSON.stringify({
+              full_name: data.name,
+              age: parseInt(data.age, 10) || 30,
+              gender: data.gender.toLowerCase(),
+            }),
+          });
+
+          // Associate MOBILE identity
           await apiFetch(`/patients/${patientData.id}/identities`, {
             method: 'POST',
             body: JSON.stringify({
-              identity_type: 'PHONE',
+              identity_type: 'MOBILE',
               identity_value: data.mobile,
               is_verified: true,
             }),
           });
+        } else {
+          // CASE C: Any other network or server error
+          throw err;
         }
       }
 
-      if (patientData) {
-        setPatientId(patientData.id);
-        setUhid(patientData.uhid);
-
-        // 2. Create an encounter if not already created
-        if (!encounterId) {
-          const encRes = await apiFetch<any>('/encounters', {
-            method: 'POST',
-            body: JSON.stringify({
-              patient_id: patientData.id,
-              priority: 'NORMAL',
-            }),
-          });
-          if (encRes.ok && encRes.data) {
-            setEncounterId(encRes.data.id);
-          }
-        }
+      if (!patientData || !patientData.id) {
+        throw new Error('Failed to retrieve or create patient master record.');
       }
-    } catch (err) {
+
+      setPatientId(patientData.id);
+      setUhid(patientData.uhid || patientData.patient_uhid);
+
+      // 2. Create an encounter for this visit
+      let activeEncounterId = encounterId;
+      if (!activeEncounterId) {
+        const encRes = await apiFetch<any>('/encounters', {
+          method: 'POST',
+          body: JSON.stringify({
+            patient_id: patientData.id,
+            priority: 'NORMAL',
+          }),
+        });
+        activeEncounterId = encRes.id;
+        setEncounterId(encRes.id);
+      }
+
+      // Successfully synced with backend -> proceed to consent
+      navigate('/patient/consent');
+    } catch (err: any) {
       console.error('Failed to sync patient with backend:', err);
+      setApiError(err?.message || 'Failed to sync patient record with server. Please check your connection.');
     } finally {
       setIsSubmitting(false);
-      navigate('/patient/consent');
     }
   };
 
@@ -133,6 +145,12 @@ export default function Register() {
 
   return (
     <div className="w-full max-w-7xl mx-auto pt-6 px-4">
+      {apiError && (
+        <div className="bg-red-50 border-2 border-red-400 text-red-700 px-6 py-4 rounded-2xl mb-6 flex items-center gap-3">
+          <AlertCircle className="w-6 h-6 shrink-0" />
+          <span className="font-bold text-base">{apiError}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6 border-b border-slate-200 pb-4">
         <h2 className="text-3xl font-bold text-primary">
           New Patient Registration / <span className="font-devanagari">नया पंजीकरण</span>

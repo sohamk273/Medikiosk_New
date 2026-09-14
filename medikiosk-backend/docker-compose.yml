@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: medikiosk
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
