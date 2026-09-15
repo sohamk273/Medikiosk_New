@@ -26,6 +26,7 @@ export default function DoctorQueue() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<FilterType>('All');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const fetchQueue = async (manual = false) => {
     if (manual) setIsRefreshing(true);
@@ -57,9 +58,14 @@ export default function DoctorQueue() {
           };
         });
         setCases(mapped);
+        setApiError(null);
+      } else if (!res.ok) {
+        // If 401, client.ts handles session cleanup and dispatch
+        setApiError(res.error || 'Failed to fetch OPD queue from server.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch OPD queue from backend:', err);
+      setApiError(err?.message || 'Unexpected error while loading queue.');
     } finally {
       if (manual) setTimeout(() => setIsRefreshing(false), 400);
     }
@@ -149,6 +155,13 @@ export default function DoctorQueue() {
           </div>
         </div>
       </div>
+
+      {apiError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-2xl flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+          <span className="font-bold text-sm">{apiError}</span>
+        </div>
+      )}
 
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -249,7 +262,11 @@ export default function DoctorQueue() {
           ) : (
             <div className="text-center py-20 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
               <p className="text-slate-500 text-lg font-medium">
-                {searchTerm ? 'No matching cases found.' : 'No patients currently in the OPD queue.'}
+                {apiError
+                  ? 'Unable to load OPD queue due to a server error.'
+                  : searchTerm
+                  ? 'No matching cases found.'
+                  : 'No patients currently in the OPD queue.'}
               </p>
             </div>
           )}

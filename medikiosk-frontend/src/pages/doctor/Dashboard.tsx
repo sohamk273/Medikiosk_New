@@ -4,7 +4,6 @@ import {
   AlertCircle, Clock, User, FileText, ChevronRight, 
   Activity, Users, CheckCircle2, ShieldAlert, Monitor, ArrowRight, RefreshCw, FileSignature
 } from 'lucide-react';
-import { MockDoctorCaseProvider } from '@/services/doctor/MockDoctorCaseProvider';
 import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
 import { useDoctorAuth } from '@/features/auth/DoctorAuthContext';
 import { apiFetchSafe } from '@/services/api/client';
@@ -20,6 +19,7 @@ export default function Dashboard() {
   const [draftConsultations, setDraftConsultations] = useState<DoctorCase[]>([]);
   const [recentCompleted, setRecentCompleted] = useState<DoctorCase[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -52,25 +52,33 @@ export default function Dashboard() {
           };
         });
 
-        // Use backend cases if available, otherwise show demo cases
-        const effectiveCases = mapped.length > 0 ? mapped : MockDoctorCaseProvider.getCases();
-        setCases(effectiveCases);
-        setAttentionCases(effectiveCases.filter(c => c.redFlagTriggered && c.status !== 'completed' && c.status !== 'closed'));
-        setActiveConsultations(effectiveCases.filter(c => c.status === 'in-consultation'));
-        setCompletedCases(effectiveCases.filter(c => c.status === 'completed' || c.status === 'closed'));
-        setDraftConsultations(MockDoctorCaseProvider.getDraftConsultations());
-        setRecentCompleted(effectiveCases.filter(c => c.status === 'completed' || c.status === 'closed').slice(0, 3));
-      } else {
-        const fallback = MockDoctorCaseProvider.getCases();
-        setCases(fallback);
-        setAttentionCases(MockDoctorCaseProvider.getAttentionCases());
-        setActiveConsultations(MockDoctorCaseProvider.getActiveConsultations());
-        setCompletedCases(fallback.filter(c => c.status === 'completed' || c.status === 'closed'));
-        setDraftConsultations(MockDoctorCaseProvider.getDraftConsultations());
-        setRecentCompleted(MockDoctorCaseProvider.getRecentlyCompletedCases(3));
+        // Use real backend queue data - NEVER fall back to mock cases
+        setCases(mapped);
+        setAttentionCases(mapped.filter(c => c.redFlagTriggered && c.status !== 'completed' && c.status !== 'closed'));
+        setActiveConsultations(mapped.filter(c => c.status === 'in-consultation'));
+        setCompletedCases(mapped.filter(c => c.status === 'completed' || c.status === 'closed'));
+        setDraftConsultations([]);
+        setRecentCompleted(mapped.filter(c => c.status === 'completed' || c.status === 'closed').slice(0, 3));
+        setApiError(null);
+      } else if (!res.ok) {
+        // Do not silently load mock cases on failure
+        setApiError(res.error || 'Failed to load OPD cases from server.');
+        setCases([]);
+        setAttentionCases([]);
+        setActiveConsultations([]);
+        setCompletedCases([]);
+        setDraftConsultations([]);
+        setRecentCompleted([]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load dashboard data:', err);
+      setApiError(err?.message || 'Unexpected error while loading dashboard.');
+      setCases([]);
+      setAttentionCases([]);
+      setActiveConsultations([]);
+      setCompletedCases([]);
+      setDraftConsultations([]);
+      setRecentCompleted([]);
     }
   };
 
@@ -142,6 +150,13 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {apiError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-2xl flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+          <span className="font-bold text-sm">{apiError}</span>
+        </div>
+      )}
 
       {/* B. KPI CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

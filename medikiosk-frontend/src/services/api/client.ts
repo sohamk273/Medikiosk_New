@@ -32,6 +32,15 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
   });
 
   if (!response.ok) {
+    // Centralized 401 Unauthorized handling for doctor session expiration
+    if (response.status === 401 && !url.includes('/auth/login')) {
+      localStorage.removeItem('medikiosk_doctor_token');
+      localStorage.removeItem('medikiosk_doctor_user');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('medikiosk:auth-expired'));
+      }
+    }
+
     let errorDetail = response.statusText;
     try {
       const errJson = await response.json();

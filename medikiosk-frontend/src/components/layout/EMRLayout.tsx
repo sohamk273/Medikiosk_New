@@ -4,12 +4,22 @@ import { TopBar } from './TopBar';
 import { useDoctorAuth } from '@/features/auth/DoctorAuthContext';
 
 export function EMRLayout() {
-  const { isAuthenticated } = useDoctorAuth();
+  const { isAuthenticated, isLoading } = useDoctorAuth();
   const location = useLocation();
 
   // Allow login page to render without sidebar navigation
   if (location.pathname === '/doctor/login') {
     return <Outlet />;
+  }
+
+  // Prevent flashing unauthenticated content or false redirect while checking backend /auth/me
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center items-center">
+        <div className="w-10 h-10 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin mb-4" />
+        <p className="text-slate-500 font-semibold text-sm">Verifying doctor session...</p>
+      </div>
+    );
   }
 
   // Route guard: Redirect unauthenticated visits to doctor login

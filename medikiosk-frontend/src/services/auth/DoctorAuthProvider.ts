@@ -52,7 +52,22 @@ export class DoctorAuthProvider {
     }
   }
 
+  static async validateSession(): Promise<DoctorUser | null> {
+    const token = this.getToken();
+    if (!token) return null;
+
+    try {
+      const user = await apiFetch<DoctorUser>('/auth/me');
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      return user;
+    } catch {
+      this.logout();
+      return null;
+    }
+  }
+
   static isAuthenticated(): boolean {
     return Boolean(this.getToken() && this.getUser());
   }
 }
+
