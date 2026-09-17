@@ -85,6 +85,13 @@ class Patient(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    documents: Mapped[List["Document"]] = relationship(
+        "Document",
+        back_populates="patient",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __repr__(self) -> str:
         return f"<Patient id={self.id} uhid='{self.patient_uhid}' name='{self.full_name}'>"

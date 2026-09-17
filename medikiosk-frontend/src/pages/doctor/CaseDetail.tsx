@@ -9,6 +9,7 @@ import { MockAyushAssessmentProvider } from '@/services/doctor/MockAyushAssessme
 import { MockDocumentProvider } from '@/services/doctor/MockDocumentProvider';
 import { MockClinicalReportProvider } from '@/services/doctor/MockClinicalReportProvider';
 import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
+import type { PatientDocument } from '@/features/patient/PatientSessionContext';
 import { apiFetchSafe } from '@/services/api/client';
 
 export default function CaseDetail() {
@@ -41,6 +42,21 @@ export default function CaseDetail() {
             uiStatus = 'completed';
           }
 
+          // Fetch real documents for this encounter
+          let realDocs: PatientDocument[] = [];
+          const docsRes = await apiFetchSafe<any[]>(`/encounters/${encounter.id}/documents`);
+          if (docsRes.ok && Array.isArray(docsRes.data)) {
+            realDocs = docsRes.data.map((d: any) => ({
+              id: d.id,
+              type: (d.document_type?.toLowerCase() || 'other') as any,
+              title: d.file_name,
+              titleHindi: d.file_name,
+              fileName: d.file_name,
+              status: 'scanned' as const,
+              timestamp: d.uploaded_at,
+            }));
+          }
+
           setCaseData({
             caseId: encounter.encounter_number || encounter.id,
             patientName: patient.full_name,
@@ -50,7 +66,7 @@ export default function CaseDetail() {
             chiefComplaint: encounter.chief_complaint,
             voiceResponses: [],
             ayushResponses: [],
-            documents: [],
+            documents: realDocs,
             redFlagTriggered: encounter.red_flag_triggered || encounter.priority === 'EMERGENCY',
             submittedAt: encounter.registered_at,
             status: uiStatus,
@@ -403,7 +419,9 @@ export default function CaseDetail() {
             </div>
             <div className="p-6 space-y-4">
               {(() => {
-                const docs = MockDocumentProvider.getDocumentsByCase(caseId!);
+                const docs = (caseData.documents && caseData.documents.length > 0)
+                  ? caseData.documents
+                  : MockDocumentProvider.getDocumentsByCase(caseId!);
                 if (docs.length === 0) return <p className="text-slate-500 italic">No documents attached.</p>;
                 return docs.map((doc, idx) => (
                   <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">
@@ -412,12 +430,21 @@ export default function CaseDetail() {
                         <FileIcon className="w-5 h-5 text-slate-400" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-bold text-slate-700 truncate">{doc.documentType}</p>
+                        <p className="font-bold text-slate-700 truncate">{(doc as any).documentType || (doc as any).title || (doc as any).fileName || 'Document'}</p>
                         <p className="text-xs text-slate-500 truncate">{doc.fileName || doc.id}</p>
                       </div>
                     </div>
                     <button 
-                      onClick={() => navigate(`/doctor/documents/${doc.id}`)}
+                      onClick={async () => {
+                        if (doc.id) {
+                          const urlRes = await apiFetchSafe<any>(`/documents/${doc.id}/url`);
+                          if (urlRes.ok && urlRes.data?.url) {
+                            window.open(urlRes.data.url, '_blank', 'noopener,noreferrer');
+                            return;
+                          }
+                        }
+                        navigate(`/doctor/documents/${doc.id}`);
+                      }}
                       className="text-primary font-bold text-sm bg-primary/10 px-4 py-2 rounded-lg hover:bg-primary/20 transition-colors whitespace-nowrap ml-2 flex items-center gap-2"
                     >
                       <Eye className="w-4 h-4" /> View

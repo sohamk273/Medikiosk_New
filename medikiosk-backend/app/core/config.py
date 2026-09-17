@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     MINIO_BUCKET: str = "medikiosk-documents"
     MINIO_SECURE: bool = False
 
+    # Document Upload & Storage Settings
+    MAX_DOCUMENT_SIZE_MB: int = 10
+    ALLOWED_DOCUMENT_MIME_TYPES: List[str] = [
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+    ]
+    PRESIGNED_URL_EXPIRATION_SECONDS: int = 900  # 15 minutes
+
     # CORS configuration
     CORS_ALLOWED_ORIGINS: Union[List[str], str] = [
         "http://localhost:5173",

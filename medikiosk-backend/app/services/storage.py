@@ -10,6 +10,25 @@ class StorageService:
     def __init__(self, provider: Optional[StorageProvider] = None):
         self.provider = provider or MinIOStorageProvider()
 
+    def upload_raw(
+        self,
+        object_name: str,
+        data: BinaryIO,
+        length: int,
+        content_type: str = "application/octet-stream",
+    ) -> str:
+        """Uploads raw bytes to a specific storage key."""
+        return self.provider.upload_file(
+            object_name=object_name,
+            data=data,
+            length=length,
+            content_type=content_type,
+        )
+
+    def delete_file(self, object_name: str) -> bool:
+        """Deletes an object by its storage key."""
+        return self.provider.delete_file(object_name=object_name)
+
     def upload_document(
         self,
         case_id: str,

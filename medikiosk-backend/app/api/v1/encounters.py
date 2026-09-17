@@ -1,13 +1,14 @@
 """Encounter and clinical visit API endpoints."""
 import uuid
-from typing import Optional
-from fastapi import APIRouter, Depends, Request, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.schemas.consent import ConsentCreate, ConsentRead
 from app.schemas.consultation import ConsultationCreate, ConsultationRead
+from app.schemas.document import DocumentRead
 from app.schemas.encounter import (
     EncounterCreate,
     EncounterRead,
@@ -22,6 +23,10 @@ from app.services.consultation.consultation_service import (
     save_consultation_draft,
     finalize_consultation,
 )
+from app.services.document.document_service import (
+    upload_document,
+    list_documents_by_encounter,
+)
 from app.services.encounter.encounter_service import (
     create_encounter,
     update_encounter,
@@ -29,6 +34,7 @@ from app.services.encounter.encounter_service import (
     get_encounter_detail,
 )
 from app.services.queue.queue_service import submit_encounter_to_queue
+from app.services.storage import StorageService, get_storage_service
 
 router = APIRouter(prefix="/encounters", tags=["Encounters"])
 
@@ -174,3 +180,43 @@ async def finalize_visit_consultation(
     """Finalizes consultation, marks encounter & queue COMPLETED. Doctor identity comes from JWT."""
     consultation = await finalize_consultation(db, encounter_id, current_user.id, data_in)
     return ConsultationRead.model_validate(consultation)
+
+
+@router.post(
+    "/{encounter_id}/documents",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload medical document for an encounter",
+)
+async def upload_encounter_document(
+    encounter_id: str,
+    file: UploadFile = File(..., description="Document binary file (PDF, PNG, JPEG)"),
+    document_type: Optional[str] = Form(None, description="Document category (PRESCRIPTION, LAB_REPORT, etc.)"),
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage_service),
+) -> DocumentRead:
+    """Uploads a clinical document to MinIO object storage and persists metadata in PostgreSQL."""
+    document = await upload_document(
+        db=db,
+        encounter_id=encounter_id,
+        file=file,
+        document_type=document_type,
+        storage_service=storage,
+    )
+    return DocumentRead.model_validate(document)
+
+
+@router.get(
+    "/{encounter_id}/documents",
+    response_model=List[DocumentRead],
+    status_code=status.HTTP_200_OK,
+    summary="List all documents associated with an encounter",
+    dependencies=[Depends(require_role(DOCTOR_ROLES))],
+)
+async def get_encounter_documents(
+    encounter_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> List[DocumentRead]:
+    """Retrieves document metadata records for this encounter. Doctor authentication required."""
+    documents = await list_documents_by_encounter(db, encounter_id)
+    return [DocumentRead.model_validate(d) for d in documents]

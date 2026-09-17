@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileScan, Search, Upload, Clock, 
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { MockDocumentProvider } from '@/services/doctor/MockDocumentProvider';
 import { MockDoctorCaseProvider, type DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
+import { apiFetchSafe } from '@/services/api/client';
 
 export default function DocumentsOcr() {
   const navigate = useNavigate();
@@ -16,9 +17,66 @@ export default function DocumentsOcr() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadType, setUploadType] = useState('Lab Report');
   const [selectedCaseId, setSelectedCaseId] = useState('');
-  
-  const allDocs = MockDocumentProvider.getDocuments();
+
+  // Real documents from PostgreSQL / MinIO
+  const [realDocs, setRealDocs] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchBackendDocuments = async () => {
+      try {
+        const queueRes = await apiFetchSafe<any[]>('/queue/today');
+        if (queueRes.ok && Array.isArray(queueRes.data)) {
+          const docPromises = queueRes.data.map(async (entry) => {
+            const encId = entry.encounter?.id || entry.encounter_id;
+            if (!encId) return [];
+            const dRes = await apiFetchSafe<any[]>(`/encounters/${encId}/documents`);
+            if (dRes.ok && Array.isArray(dRes.data)) {
+              return dRes.data.map((d: any) => ({
+                id: d.id,
+                documentType: d.document_type || 'DOCUMENT',
+                fileName: d.file_name,
+                patientName: entry.patient?.full_name || 'Patient',
+                maskedMobile: entry.patient?.patient_uhid || entry.patient?.mobile || '',
+                caseId: entry.encounter?.encounter_number || encId,
+                uploadedAt: d.uploaded_at,
+                ocrStatus: d.processing_status || 'UPLOADED',
+                status: 'reviewed',
+                fileSize: d.file_size,
+                isReal: true,
+              }));
+            }
+            return [];
+          });
+          const nested = await Promise.all(docPromises);
+          const flattened = nested.flat();
+          if (flattened.length > 0) {
+            setRealDocs(flattened);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch backend documents:', err);
+      }
+    };
+
+    fetchBackendDocuments();
+  }, []);
+
+  const allDocs = useMemo(() => {
+    return [...realDocs, ...MockDocumentProvider.getDocuments()];
+  }, [realDocs]);
+
   const cases = MockDoctorCaseProvider.getCases(); // For dropdown in upload modal
+
+  const handleViewDoc = async (doc: any) => {
+    if (doc.isReal || (doc.id && doc.id.includes('-'))) {
+      const urlRes = await apiFetchSafe<any>(`/documents/${doc.id}/url`);
+      if (urlRes.ok && urlRes.data?.url) {
+        window.open(urlRes.data.url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+    navigate(`/doctor/documents/${doc.id}`);
+  };
 
   const stats = useMemo(() => {
     return {
@@ -212,13 +270,15 @@ export default function DocumentsOcr() {
                         </div>
                         <div>
                           <p className="font-bold text-slate-800">{doc.documentType}</p>
-                          <p className="text-xs text-slate-500">{doc.fileName}</p>
+                          <p className="text-xs text-slate-500">
+                            {doc.fileName} {doc.fileSize ? `• ${(doc.fileSize / 1024).toFixed(1)} KB` : ''}
+                          </p>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <p className="font-bold text-slate-800">{doc.patientName}</p>
-                      <p className="text-xs text-slate-500">Ph: {doc.maskedMobile}</p>
+                      <p className="text-xs text-slate-500">UHID: {doc.maskedMobile}</p>
                     </td>
                     <td className="px-6 py-4">
                       <p className="text-sm font-medium text-slate-700">{doc.caseId}</p>
@@ -226,7 +286,12 @@ export default function DocumentsOcr() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1 items-start">
-                        {doc.status === 'review-required' ? (
+                        {doc.ocrStatus === 'UPLOADED' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-teal-50 text-teal-700 border border-teal-100">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            UPLOADED (MinIO)
+                          </span>
+                        ) : doc.status === 'review-required' ? (
                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-red-50 text-red-700 border border-red-100">
                              <AlertCircle className="w-3.5 h-3.5" />
                              REVIEW REQUIRED
@@ -254,7 +319,7 @@ export default function DocumentsOcr() {
                     </td>
                     <td className="px-6 py-4">
                       <button
-                        onClick={() => navigate(`/doctor/documents/${doc.id}`)}
+                        onClick={() => handleViewDoc(doc)}
                         className="flex items-center gap-2 text-teal-600 font-bold hover:text-teal-800 transition-colors"
                       >
                         <Eye className="w-4 h-4" />

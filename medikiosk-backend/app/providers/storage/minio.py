@@ -77,18 +77,24 @@ class MinIOStorageProvider(StorageProvider):
             logger.error("Unexpected error uploading %s: %s", object_name, e)
             raise
 
+    def _clean_object_name(self, object_name: str, bucket: str) -> str:
+        if object_name.startswith(f"{bucket}/"):
+            return object_name[len(bucket) + 1 :]
+        return object_name
+
     def download_file(
         self,
         object_name: str,
         bucket_name: Optional[str] = None,
     ) -> bytes:
         bucket = self._resolve_bucket(bucket_name)
+        cleaned_name = self._clean_object_name(object_name, bucket)
         response = None
         try:
-            response = self._client.get_object(bucket, object_name)
+            response = self._client.get_object(bucket, cleaned_name)
             return response.read()
         except S3Error as e:
-            logger.error("MinIO S3 error downloading %s: %s", object_name, e)
+            logger.error("MinIO S3 error downloading %s: %s", cleaned_name, e)
             raise
         finally:
             if response:
@@ -101,11 +107,12 @@ class MinIOStorageProvider(StorageProvider):
         bucket_name: Optional[str] = None,
     ) -> bool:
         bucket = self._resolve_bucket(bucket_name)
+        cleaned_name = self._clean_object_name(object_name, bucket)
         try:
-            self._client.remove_object(bucket, object_name)
+            self._client.remove_object(bucket, cleaned_name)
             return True
         except Exception as e:
-            logger.error("Failed to delete MinIO object %s: %s", object_name, e)
+            logger.error("Failed to delete MinIO object %s: %s", cleaned_name, e)
             return False
 
     def get_presigned_url(
@@ -115,14 +122,15 @@ class MinIOStorageProvider(StorageProvider):
         bucket_name: Optional[str] = None,
     ) -> str:
         bucket = self._resolve_bucket(bucket_name)
+        cleaned_name = self._clean_object_name(object_name, bucket)
         try:
             return self._client.presigned_get_object(
                 bucket_name=bucket,
-                object_name=object_name,
+                object_name=cleaned_name,
                 expires=timedelta(seconds=expires_seconds),
             )
         except Exception as e:
-            logger.error("Failed generating presigned URL for %s: %s", object_name, e)
+            logger.error("Failed generating presigned URL for %s: %s", cleaned_name, e)
             raise
 
     def is_healthy(self) -> bool:

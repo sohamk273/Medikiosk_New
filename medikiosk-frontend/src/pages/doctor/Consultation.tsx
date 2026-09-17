@@ -43,6 +43,21 @@ export default function Consultation() {
         if (res.ok && res.data) {
           const { encounter, patient, consultation } = res.data;
 
+          // Retrieve attached medical documents from backend
+          let realDocs: PatientDocument[] = [];
+          const docsRes = await apiFetchSafe<any[]>(`/encounters/${caseId}/documents`);
+          if (docsRes.ok && Array.isArray(docsRes.data)) {
+            realDocs = docsRes.data.map((d: any) => ({
+              id: d.id,
+              type: (d.document_type?.toLowerCase() || 'other') as any,
+              title: d.file_name,
+              titleHindi: d.file_name,
+              fileName: d.file_name,
+              status: 'scanned' as const,
+              timestamp: d.uploaded_at,
+            }));
+          }
+
           const realCase: DoctorCase = {
             caseId: encounter.id,
             patientName: patient.full_name,
@@ -53,7 +68,7 @@ export default function Consultation() {
             chiefComplaint: encounter.chief_complaint,
             voiceResponses: [],
             ayushResponses: [],
-            documents: [],
+            documents: realDocs,
             redFlagTriggered: encounter.red_flag_triggered || encounter.priority === 'EMERGENCY',
             submittedAt: encounter.registered_at,
             status: encounter.status.toLowerCase(),
@@ -157,6 +172,17 @@ export default function Consultation() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
+
+  const handleOpenDoc = async (doc: any) => {
+    if (doc.id) {
+      const urlRes = await apiFetchSafe<any>(`/documents/${doc.id}/url`);
+      if (urlRes.ok && urlRes.data?.url) {
+        window.open(urlRes.data.url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+    setPreviewDoc(doc);
+  };
 
   // Masking helpers
   const maskPhone = (phone?: string) => {
@@ -840,7 +866,7 @@ export default function Consultation() {
                             <p className="text-xs font-bold text-slate-700 truncate">{doc.title}</p>
                           </div>
                           <button 
-                            onClick={() => setPreviewDoc(doc)}
+                            onClick={() => handleOpenDoc(doc)}
                             className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded hover:bg-primary/20 transition-colors"
                           >
                             View

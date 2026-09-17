@@ -7,6 +7,7 @@ from app.models.queue import QueueEntry, QueueStatus
 from app.models.consent import ConsentRecord
 from app.models.hospital_settings import HospitalSettings
 from app.models.consultation import ConsultationRecord, ConsultationStatus
+from app.models.document import Document
 
 __all__ = [
     "User",
@@ -23,4 +24,5 @@ __all__ = [
     "HospitalSettings",
     "ConsultationRecord",
     "ConsultationStatus",
+    "Document",
 ]

@@ -46,24 +46,34 @@ class FakeStorageProvider(StorageProvider):
         self._storage: dict[str, bytes] = {}
         self._healthy = healthy
 
+    def _clean_name(self, object_name: str, bucket_name: str = None) -> str:
+        b = bucket_name or "test-bucket"
+        if object_name.startswith(f"{b}/"):
+            return object_name[len(b) + 1:]
+        return object_name
+
     def upload_file(self, object_name: str, data: io.BytesIO, length: int, content_type: str = "application/octet-stream", bucket_name: str = None) -> str:
+        cleaned = self._clean_name(object_name, bucket_name)
         content = data.read()
-        self._storage[object_name] = content
-        return f"test-bucket/{object_name}"
+        self._storage[cleaned] = content
+        return f"test-bucket/{cleaned}"
 
     def download_file(self, object_name: str, bucket_name: str = None) -> bytes:
-        if object_name not in self._storage:
-            raise FileNotFoundError(f"Object {object_name} not found")
-        return self._storage[object_name]
+        cleaned = self._clean_name(object_name, bucket_name)
+        if cleaned not in self._storage:
+            raise FileNotFoundError(f"Object {cleaned} not found")
+        return self._storage[cleaned]
 
     def delete_file(self, object_name: str, bucket_name: str = None) -> bool:
-        if object_name in self._storage:
-            del self._storage[object_name]
+        cleaned = self._clean_name(object_name, bucket_name)
+        if cleaned in self._storage:
+            del self._storage[cleaned]
             return True
         return False
 
     def get_presigned_url(self, object_name: str, expires_seconds: int = 900, bucket_name: str = None) -> str:
-        return f"http://localhost:9000/test-bucket/{object_name}?expires={expires_seconds}"
+        cleaned = self._clean_name(object_name, bucket_name)
+        return f"http://localhost:9000/test-bucket/{cleaned}?expires={expires_seconds}"
 
     def ensure_bucket_exists(self, bucket_name: str = None) -> bool:
         return self._healthy
