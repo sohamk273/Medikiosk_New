@@ -217,13 +217,26 @@ async def call_queue_entry(
             detail=f"Queue entry '{queue_entry_id}' not found",
         )
 
-    now = datetime.now(timezone.utc)
-    queue_entry.queue_status = QueueStatus.CALLED
-    queue_entry.called_at = now
+    if queue_entry.queue_status in (QueueStatus.COMPLETED, QueueStatus.CANCELLED):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot call patient with queue status '{queue_entry.queue_status.value}'",
+        )
 
     encounter = queue_entry.encounter
-    if encounter:
-        encounter.status = EncounterStatus.IN_CONSULTATION
+    if not encounter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Associated encounter not found",
+        )
+
+    now = datetime.now(timezone.utc)
+    queue_entry.queue_status = QueueStatus.CALLED
+    if not queue_entry.called_at:
+        queue_entry.called_at = now
+
+    encounter.status = EncounterStatus.IN_CONSULTATION
+    if not encounter.started_at:
         encounter.started_at = now
 
     await db.commit()
@@ -233,8 +246,8 @@ async def call_queue_entry(
         queue_entry_id=queue_entry.id,
         encounter_id=queue_entry.encounter_id,
         queue_status=queue_entry.queue_status,
-        encounter_status=encounter.status if encounter else EncounterStatus.IN_CONSULTATION,
-        called_at=now,
+        encounter_status=encounter.status,
+        called_at=queue_entry.called_at or now,
     )
 
 

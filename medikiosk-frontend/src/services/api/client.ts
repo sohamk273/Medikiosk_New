@@ -69,11 +69,11 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
 export async function apiFetchSafe<T>(
   endpoint: string,
   options: RequestInit = {}
-): Promise<{ ok: boolean; data: T | null; error?: string }> {
+): Promise<{ ok: boolean; data: T | null; error?: string; status?: number }> {
   try {
     const data = await apiFetch<T>(endpoint, options);
-    return { ok: true, data };
+    return { ok: true, data, status: 200 };
   } catch (err: any) {
-    return { ok: false, data: null, error: err?.message || 'Request failed' };
+    return { ok: false, data: null, error: err?.message || 'Request failed', status: err?.status };
   }
 }

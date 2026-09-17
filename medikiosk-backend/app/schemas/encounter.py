@@ -47,12 +47,16 @@ class EncounterPatientSummary(BaseModel):
     mobile: Optional[str] = None
 
 
+from app.schemas.consultation import ConsultationRead
+
+
 class EncounterDetailResponse(BaseModel):
     encounter: EncounterRead
     patient: EncounterPatientSummary
     queue_entry_id: Optional[uuid.UUID] = None
     token_number: Optional[int] = None
     queue_status: Optional[QueueStatus] = None
+    consultation: Optional[ConsultationRead] = None
 
 
 class EncounterSubmitResponse(BaseModel):

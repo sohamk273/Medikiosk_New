@@ -115,6 +115,14 @@ class Encounter(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    consultation: Mapped[Optional["ConsultationRecord"]] = relationship(
+        "ConsultationRecord",
+        back_populates="encounter",
+        lazy="selectin",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __repr__(self) -> str:
         return f"<Encounter id={self.id} num='{self.encounter_number}' status={self.status} red_flag={self.red_flag_triggered}>"

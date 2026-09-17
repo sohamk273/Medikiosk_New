@@ -9,7 +9,7 @@ import { MockAyushAssessmentProvider } from '@/services/doctor/MockAyushAssessme
 import { MockDocumentProvider } from '@/services/doctor/MockDocumentProvider';
 import { MockClinicalReportProvider } from '@/services/doctor/MockClinicalReportProvider';
 import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
-import { apiFetch, apiFetchSafe } from '@/services/api/client';
+import { apiFetchSafe } from '@/services/api/client';
 
 export default function CaseDetail() {
   const { caseId } = useParams();
@@ -122,14 +122,13 @@ export default function CaseDetail() {
     const targetId = queueEntryId || caseId;
     if (targetId) {
       try {
-        await apiFetch(`/queue/${targetId}/call`, {
+        await apiFetchSafe(`/queue/${targetId}/call`, {
           method: 'POST',
         });
       } catch (err) {
         console.error('Failed to trigger backend queue call transition:', err);
       }
     }
-    MockDoctorCaseProvider.updateCaseStatus(caseData.caseId, 'in-consultation');
     navigate(`/doctor/consultation/${caseId}`);
   };
 

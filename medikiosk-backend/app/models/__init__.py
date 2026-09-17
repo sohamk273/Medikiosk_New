@@ -6,6 +6,7 @@ from app.models.encounter import Encounter, EncounterStatus, EncounterPriority
 from app.models.queue import QueueEntry, QueueStatus
 from app.models.consent import ConsentRecord
 from app.models.hospital_settings import HospitalSettings
+from app.models.consultation import ConsultationRecord, ConsultationStatus
 
 __all__ = [
     "User",
@@ -20,4 +21,6 @@ __all__ = [
     "QueueStatus",
     "ConsentRecord",
     "HospitalSettings",
+    "ConsultationRecord",
+    "ConsultationStatus",
 ]

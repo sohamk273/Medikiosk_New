@@ -12,7 +12,9 @@ from sqlalchemy.orm import selectinload
 from app.models.encounter import Encounter, EncounterStatus, EncounterPriority
 from app.models.patient import Patient
 from app.models.queue import QueueEntry, QueueStatus
+from app.models.consultation import ConsultationRecord, ConsultationStatus
 from app.schemas.encounter import EncounterCreate, EncounterUpdate, EncounterDetailResponse, EncounterRead, EncounterPatientSummary
+from app.schemas.consultation import ConsultationRead
 
 
 def generate_encounter_number() -> str:
@@ -33,6 +35,7 @@ async def get_encounter_by_id(
         .options(
             selectinload(Encounter.patient).selectinload(Patient.identities),
             selectinload(Encounter.queue_entries),
+            selectinload(Encounter.consultation).selectinload(ConsultationRecord.doctor),
         )
     )
     result = await db.execute(query)
@@ -61,9 +64,11 @@ async def get_encounter_by_identifier(
     query = (
         select(Encounter)
         .where(condition)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(Encounter.patient).selectinload(Patient.identities),
             selectinload(Encounter.queue_entries),
+            selectinload(Encounter.consultation).selectinload(ConsultationRecord.doctor),
         )
     )
     result = await db.execute(query)
@@ -74,27 +79,21 @@ async def create_encounter(
     db: AsyncSession,
     encounter_in: EncounterCreate,
 ) -> Encounter:
-    """Creates a new clinical visit record for an existing patient."""
+    """Creates a new clinical visit record."""
     # Verify patient exists
-    pat_query = select(Patient).where(Patient.id == encounter_in.patient_id)
-    pat_res = await db.execute(pat_query)
-    patient = pat_res.scalar_one_or_none()
-
+    from app.services.patient.patient_service import get_patient_by_id
+    patient = await get_patient_by_id(db, encounter_in.patient_id)
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Patient '{encounter_in.patient_id}' not found",
         )
 
-    enc_num = generate_encounter_number()
-    now = datetime.now(timezone.utc)
-
     encounter = Encounter(
-        encounter_number=enc_num,
+        encounter_number=generate_encounter_number(),
         patient_id=encounter_in.patient_id,
-        status=EncounterStatus.WAITING,
         priority=encounter_in.priority or EncounterPriority.NORMAL,
-        registered_at=now,
+        status=EncounterStatus.WAITING,
     )
     db.add(encounter)
     await db.commit()
@@ -107,7 +106,7 @@ async def update_encounter(
     encounter_id: uuid.UUID,
     update_in: EncounterUpdate,
 ) -> Encounter:
-    """Updates registration-level encounter fields like chief complaint or priority."""
+    """Updates registration-time details (chief complaint, red flag, priority)."""
     encounter = await get_encounter_by_id(db, encounter_id)
     if not encounter:
         raise HTTPException(
@@ -115,12 +114,9 @@ async def update_encounter(
             detail=f"Encounter '{encounter_id}' not found",
         )
 
-    if update_in.chief_complaint is not None:
-        encounter.chief_complaint = update_in.chief_complaint.strip()
-    if update_in.priority is not None:
-        encounter.priority = update_in.priority
-    if update_in.red_flag_triggered is not None:
-        encounter.red_flag_triggered = update_in.red_flag_triggered
+    update_data = update_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(encounter, field, value)
 
     await db.commit()
     await db.refresh(encounter)
@@ -131,7 +127,7 @@ async def complete_encounter(
     db: AsyncSession,
     encounter_id: uuid.UUID,
 ) -> Encounter:
-    """Marks an encounter and its active queue entry as completed."""
+    """Completes active clinical encounter and marks linked queue entries completed."""
     encounter = await get_encounter_by_id(db, encounter_id)
     if not encounter:
         raise HTTPException(
@@ -144,10 +140,18 @@ async def complete_encounter(
     encounter.completed_at = now
 
     # Complete active queue entries
-    for qe in encounter.queue_entries:
-        if qe.queue_status in (QueueStatus.WAITING, QueueStatus.CALLED):
-            qe.queue_status = QueueStatus.COMPLETED
-            qe.completed_at = now
+    qe_query = select(QueueEntry).where(
+        QueueEntry.encounter_id == encounter.id,
+        QueueEntry.queue_status.in_([QueueStatus.WAITING, QueueStatus.CALLED]),
+    )
+    qe_res = await db.execute(qe_query)
+    for qe in qe_res.scalars().all():
+        qe.queue_status = QueueStatus.COMPLETED
+        qe.completed_at = now
+
+    if encounter.consultation and encounter.consultation.status == ConsultationStatus.DRAFT:
+        encounter.consultation.status = ConsultationStatus.FINALIZED
+        encounter.consultation.finalized_at = now
 
     await db.commit()
     await db.refresh(encounter)
@@ -176,7 +180,24 @@ async def get_encounter_detail(
 
     active_qe = None
     if encounter.queue_entries:
-        active_qe = sorted(encounter.queue_entries, key=lambda q: q.queued_at, reverse=True)[0]
+        active_qe = sorted(encounter.queue_entries, key=lambda q: q.queued_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)[0]
+
+    if not active_qe:
+        qe_res = await db.execute(
+            select(QueueEntry)
+            .where(QueueEntry.encounter_id == encounter.id)
+            .order_by(QueueEntry.queued_at.desc())
+        )
+        active_qe = qe_res.scalars().first()
+
+    consultation_rec = encounter.consultation
+    if not consultation_rec:
+        cons_res = await db.execute(
+            select(ConsultationRecord)
+            .where(ConsultationRecord.encounter_id == encounter.id)
+            .options(selectinload(ConsultationRecord.doctor))
+        )
+        consultation_rec = cons_res.scalar_one_or_none()
 
     return EncounterDetailResponse(
         encounter=EncounterRead.model_validate(encounter),
@@ -191,4 +212,5 @@ async def get_encounter_detail(
         queue_entry_id=active_qe.id if active_qe else None,
         token_number=active_qe.token_number if active_qe else None,
         queue_status=active_qe.queue_status if active_qe else None,
+        consultation=ConsultationRead.model_validate(consultation_rec) if consultation_rec else None,
     )

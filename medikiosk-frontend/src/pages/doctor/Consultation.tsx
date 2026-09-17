@@ -7,9 +7,9 @@ import {
 import { MockDoctorCaseProvider } from '@/services/doctor/MockDoctorCaseProvider';
 import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import type { PatientDocument } from '@/features/patient/PatientSessionContext';
+import type { PatientDocument, ConsultationState } from '@/features/patient/PatientSessionContext';
 import { Modal } from '@/components/ui/Modal';
-import { apiFetch } from '@/services/api/client';
+import { apiFetchSafe } from '@/services/api/client';
 
 export default function Consultation() {
   const { caseId } = useParams();
@@ -18,6 +18,7 @@ export default function Consultation() {
 
   const [caseData, setCaseData] = useState<DoctorCase | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<{ title: string; message: string } | null>(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [validationError, setValidationError] = useState('');
   const [previewDoc, setPreviewDoc] = useState<PatientDocument | null>(null);
@@ -26,29 +27,134 @@ export default function Consultation() {
   // Derived readiness
   const isFinalized = session.consultation.status === 'finalized';
 
-  // Load state on mount
+  // Load state on mount from real backend
   useEffect(() => {
-    if (caseId) {
-      const data = MockDoctorCaseProvider.getCaseById(caseId);
-      if (data) {
-        setCaseData(data);
-        
-        // Load consultation from mock DB if exists, otherwise it continues with context default
-        const savedConsultation = MockDoctorCaseProvider.getConsultation(caseId);
-        if (savedConsultation && savedConsultation.status === 'finalized') {
-          navigate(`/doctor/case/${caseId}/summary`);
+    if (!caseId) return;
+
+    let isMounted = true;
+    const loadData = async () => {
+      setLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const res = await apiFetchSafe<any>(`/encounters/${caseId}`);
+        if (!isMounted) return;
+
+        if (res.ok && res.data) {
+          const { encounter, patient, consultation } = res.data;
+
+          const realCase: DoctorCase = {
+            caseId: encounter.id,
+            patientName: patient.full_name,
+            age: patient.age ?? '—',
+            gender: patient.gender,
+            mobile: patient.mobile,
+            abhaId: patient.uhid,
+            chiefComplaint: encounter.chief_complaint,
+            voiceResponses: [],
+            ayushResponses: [],
+            documents: [],
+            redFlagTriggered: encounter.red_flag_triggered || encounter.priority === 'EMERGENCY',
+            submittedAt: encounter.registered_at,
+            status: encounter.status.toLowerCase(),
+          };
+          setCaseData(realCase);
+
+          if (consultation && consultation.status === 'FINALIZED') {
+            navigate(`/doctor/case/${caseId}/summary`);
+            return;
+          }
+
+          if (consultation) {
+            const mappedConsultation: ConsultationState = {
+              status: (consultation.status || 'draft').toLowerCase() as any,
+              clinicalAssessment: {
+                findings: consultation.findings || '',
+                assessment: consultation.assessment || '',
+                diagnosis: consultation.diagnosis || '',
+                notes: consultation.notes || '',
+              },
+              ayushAssessment: consultation.ayush_assessment || { prakriti: '', agni: '', koshtha: '', dosha: '', notes: '' },
+              prescription: consultation.prescription || { items: [] },
+              followUp: consultation.follow_up || { required: false, timeframe: '', instructions: '' },
+              updatedAt: consultation.updated_at,
+              finalizedAt: consultation.finalized_at,
+            };
+            session.loadConsultation(mappedConsultation);
+          } else {
+            session.startConsultation();
+          }
+
+          setLoading(false);
           return;
         }
 
-        if (savedConsultation) {
-          session.loadConsultation(savedConsultation);
+        // Specific error handling (Part 12)
+        if (res.status === 401) {
+          setErrorMessage({
+            title: 'Authentication Required',
+            message: 'Your session has expired. Please log in again to continue.',
+          });
+        } else if (res.status === 403) {
+          setErrorMessage({
+            title: 'Access Denied',
+            message: 'You do not have doctor authorization to access this consultation.',
+          });
+        } else if (res.status === 404) {
+          // Check if it was a legacy mock case ID
+          const mockData = MockDoctorCaseProvider.getCaseById(caseId);
+          if (mockData) {
+            setCaseData(mockData);
+            const savedConsultation = MockDoctorCaseProvider.getConsultation(caseId);
+            if (savedConsultation && savedConsultation.status === 'finalized') {
+              navigate(`/doctor/case/${caseId}/summary`);
+              return;
+            }
+            if (savedConsultation) {
+              session.loadConsultation(savedConsultation);
+            } else {
+              session.startConsultation();
+            }
+            setLoading(false);
+            return;
+          }
+
+          setErrorMessage({
+            title: 'Encounter Not Found',
+            message: `The clinical encounter '${caseId}' could not be located.`,
+          });
+        } else if (res.status === 409) {
+          setErrorMessage({
+            title: 'Encounter Conflict',
+            message: res.error || 'The encounter state is not eligible for active consultation.',
+          });
+        } else if (res.status === 422) {
+          setErrorMessage({
+            title: 'Invalid Request',
+            message: res.error || 'The encounter identifier format is invalid.',
+          });
         } else {
-          // If no draft exists, start fresh consultation
-          session.startConsultation();
+          setErrorMessage({
+            title: 'Backend Error',
+            message: res.error || 'Failed to retrieve clinical encounter from server.',
+          });
         }
+      } catch (err: any) {
+        if (!isMounted) return;
+        setErrorMessage({
+          title: 'Network Error',
+          message: err?.message || 'Could not connect to the clinical consultation backend.',
+        });
+      } finally {
+        if (isMounted) setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
 
@@ -66,12 +172,35 @@ export default function Consultation() {
     return abha;
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!caseId) return;
     session.saveConsultationDraft();
-    MockDoctorCaseProvider.saveConsultation(caseId, { ...session.consultation, status: 'draft', updatedAt: new Date().toISOString() });
-    
-    setSaveMessage('Draft saved');
+
+    const payload = {
+      findings: session.consultation.clinicalAssessment.findings,
+      assessment: session.consultation.clinicalAssessment.assessment,
+      diagnosis: session.consultation.clinicalAssessment.diagnosis,
+      notes: session.consultation.clinicalAssessment.notes,
+      prescription: session.consultation.prescription,
+      follow_up: session.consultation.followUp,
+      ayush_assessment: session.consultation.ayushAssessment,
+    };
+
+    try {
+      const res = await apiFetchSafe<any>(`/encounters/${caseId}/consultation`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setSaveMessage('Draft saved to database');
+      } else {
+        setSaveMessage(res.error || 'Failed to save draft to server');
+      }
+    } catch (err: any) {
+      console.error('Save draft error:', err);
+      setSaveMessage('Network error saving draft');
+    }
     setTimeout(() => setSaveMessage(''), 3000);
   };
 
@@ -115,22 +244,59 @@ export default function Consultation() {
 
   const handleConfirmFinalize = async () => {
     if (!caseId) return;
+
+    const payload = {
+      findings: session.consultation.clinicalAssessment.findings,
+      assessment: session.consultation.clinicalAssessment.assessment,
+      diagnosis: session.consultation.clinicalAssessment.diagnosis,
+      notes: session.consultation.clinicalAssessment.notes,
+      prescription: session.consultation.prescription,
+      follow_up: session.consultation.followUp,
+      ayush_assessment: session.consultation.ayushAssessment,
+    };
+
     try {
-      await apiFetch(`/encounters/${caseId}/complete`, {
+      const res = await apiFetchSafe<any>(`/encounters/${caseId}/consultation/finalize`, {
         method: 'POST',
+        body: JSON.stringify(payload),
       });
-    } catch (err) {
-      console.error('Failed to complete encounter on backend:', err);
+
+      if (!res.ok) {
+        setValidationError(res.error || 'Failed to finalize consultation on server.');
+        setShowFinalizeModal(false);
+        return;
+      }
+    } catch (err: any) {
+      console.error('Failed to finalize consultation on backend:', err);
+      setValidationError(err?.message || 'Network error while finalizing consultation.');
+      setShowFinalizeModal(false);
+      return;
     }
+
     session.finalizeConsultation();
-    const finalizedConsultation = { ...session.consultation, status: 'finalized' as const, finalizedAt: new Date().toISOString() };
-    MockDoctorCaseProvider.saveConsultation(caseId, finalizedConsultation);
-    MockDoctorCaseProvider.updateCaseStatus(caseId, 'completed');
     setShowFinalizeModal(false);
     navigate(`/doctor/case/${caseId}/summary`);
   };
 
   if (loading) return <div className="p-10 text-center text-slate-500 font-bold">Loading Workspace...</div>;
+
+  if (errorMessage) {
+    return (
+      <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+        <div className="bg-white rounded-3xl p-10 border border-slate-200 shadow-sm">
+          <AlertCircle className="w-16 h-16 text-rose-500 mx-auto mb-6" />
+          <h2 className="text-3xl font-bold text-slate-800 mb-2">{errorMessage.title}</h2>
+          <p className="text-slate-600 mb-8 max-w-md mx-auto">{errorMessage.message}</p>
+          <button 
+            onClick={() => navigate('/doctor/queue')}
+            className="bg-primary text-white px-8 py-3 rounded-xl font-bold hover:bg-primary/90 transition-colors"
+          >
+            Back to Queue
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!caseData) {
     return (

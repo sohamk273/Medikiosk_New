@@ -6,6 +6,8 @@ import { apiFetchSafe } from '@/services/api/client';
 type FilterType = 'All' | 'Waiting' | 'In Consultation' | 'Completed' | 'Closed' | 'Attention Required';
 
 export interface DoctorQueueItem {
+  queueEntryId: string;
+  encounterId: string;
   caseId: string;
   tokenNumber: number;
   encounterNumber: string;
@@ -45,6 +47,8 @@ export default function DoctorQueue() {
           }
 
           return {
+            queueEntryId: item.queue_entry_id,
+            encounterId: item.encounter_id,
             caseId: item.encounter_id,
             tokenNumber: item.token_number,
             encounterNumber: item.encounter_number,
@@ -117,6 +121,23 @@ export default function DoctorQueue() {
       case 'in-consultation': return <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">IN CONSULTATION</span>;
       case 'completed': return <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">COMPLETED</span>;
       case 'closed': return <span className="bg-slate-100 text-slate-400 border border-slate-200 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">CLOSED</span>;
+    }
+  };
+
+  const handleStartConsultation = async (e: React.MouseEvent, item: DoctorQueueItem) => {
+    e.stopPropagation();
+    try {
+      const res = await apiFetchSafe(`/queue/${item.queueEntryId}/call`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        navigate(`/doctor/consultation/${item.encounterId}`);
+      } else {
+        setApiError(res.error || 'Failed to start consultation on server.');
+      }
+    } catch (err: any) {
+      console.error('Failed to start consultation:', err);
+      setApiError(err?.message || 'Failed to start consultation');
     }
   };
 
@@ -252,10 +273,45 @@ export default function DoctorQueue() {
 
                 </div>
                 
-                <div className="mt-4 md:mt-0 pl-4 flex items-center justify-end w-full md:w-auto">
-                  <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-colors">
-                    <ChevronRight className="w-5 h-5" />
-                  </div>
+                <div className="mt-4 md:mt-0 pl-4 flex items-center justify-end gap-2 w-full md:w-auto">
+                  {c.status === 'waiting' && (
+                    <button
+                      onClick={(e) => handleStartConsultation(e, c)}
+                      className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                      <span>Start Consultation</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
+                  {c.status === 'in-consultation' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/doctor/consultation/${c.encounterId}`);
+                      }}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                      <span>Resume</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
+                  {c.status === 'completed' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/doctor/case/${c.encounterId}/summary`);
+                      }}
+                      className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all flex items-center gap-1.5"
+                    >
+                      <span>Summary</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
+                  {c.status === 'closed' && (
+                    <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-colors">
+                      <ChevronRight className="w-5 h-5" />
+                    </div>
+                  )}
                 </div>
               </div>
             ))

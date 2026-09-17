@@ -1,10 +1,13 @@
 """Encounter and clinical visit API endpoints."""
 import uuid
+from typing import Optional
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.models.user import User, UserRole
 from app.schemas.consent import ConsentCreate, ConsentRead
+from app.schemas.consultation import ConsultationCreate, ConsultationRead
 from app.schemas.encounter import (
     EncounterCreate,
     EncounterRead,
@@ -12,7 +15,13 @@ from app.schemas.encounter import (
     EncounterDetailResponse,
     EncounterSubmitResponse,
 )
+from app.services.auth.auth_service import require_role
 from app.services.consent.consent_service import record_consent
+from app.services.consultation.consultation_service import (
+    get_consultation_by_encounter,
+    save_consultation_draft,
+    finalize_consultation,
+)
 from app.services.encounter.encounter_service import (
     create_encounter,
     update_encounter,
@@ -22,6 +31,9 @@ from app.services.encounter.encounter_service import (
 from app.services.queue.queue_service import submit_encounter_to_queue
 
 router = APIRouter(prefix="/encounters", tags=["Encounters"])
+
+# Authorized clinical staff roles
+DOCTOR_ROLES = [UserRole.DOCTOR, UserRole.AYUSH_DOCTOR, UserRole.HOSPITAL_ADMIN]
 
 
 @router.post(
@@ -111,3 +123,54 @@ async def complete_visit(
     """Closes the active clinical encounter and marks linked queue entries completed."""
     encounter = await complete_encounter(db, encounter_id)
     return EncounterRead.model_validate(encounter)
+
+
+@router.get(
+    "/{encounter_id}/consultation",
+    response_model=Optional[ConsultationRead],
+    summary="Get consultation record for an encounter",
+    dependencies=[Depends(require_role(DOCTOR_ROLES))],
+)
+async def get_consultation(
+    encounter_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> Optional[ConsultationRead]:
+    """Retrieves existing consultation record (draft or finalized) for this encounter."""
+    consultation = await get_consultation_by_encounter(db, encounter_id)
+    if not consultation:
+        return None
+    return ConsultationRead.model_validate(consultation)
+
+
+@router.post(
+    "/{encounter_id}/consultation",
+    response_model=ConsultationRead,
+    status_code=status.HTTP_200_OK,
+    summary="Save consultation draft",
+)
+async def save_draft(
+    encounter_id: str,
+    data_in: ConsultationCreate,
+    current_user: User = Depends(require_role(DOCTOR_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> ConsultationRead:
+    """Creates or updates a consultation draft for the encounter. Doctor identity comes from JWT."""
+    consultation = await save_consultation_draft(db, encounter_id, current_user.id, data_in)
+    return ConsultationRead.model_validate(consultation)
+
+
+@router.post(
+    "/{encounter_id}/consultation/finalize",
+    response_model=ConsultationRead,
+    status_code=status.HTTP_200_OK,
+    summary="Finalize clinical consultation",
+)
+async def finalize_visit_consultation(
+    encounter_id: str,
+    data_in: ConsultationCreate,
+    current_user: User = Depends(require_role(DOCTOR_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> ConsultationRead:
+    """Finalizes consultation, marks encounter & queue COMPLETED. Doctor identity comes from JWT."""
+    consultation = await finalize_consultation(db, encounter_id, current_user.id, data_in)
+    return ConsultationRead.model_validate(consultation)
