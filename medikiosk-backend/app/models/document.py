@@ -80,6 +80,12 @@ class Document(Base):
         back_populates="documents",
         lazy="selectin",
     )
+    extractions: Mapped[list["DocumentExtraction"]] = relationship(
+        "DocumentExtraction",
+        back_populates="document",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     def __repr__(self) -> str:
         return f"<Document id={self.id} file='{self.file_name}' status='{self.processing_status}'>"
