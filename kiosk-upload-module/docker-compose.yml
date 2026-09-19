@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: kiosk_upload_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadminpassword
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kiosk_upload_backend
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8010
+      - PUBLIC_WEB_URL=http://localhost:5174
+      - DATABASE_URL=sqlite+aiosqlite:///./kiosk_upload.db
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadminpassword
+      - MINIO_BUCKET=kiosk-uploads
+      - MINIO_SECURE=false
+    ports:
+      - "8010:8010"
+    depends_on:
+      - minio
+    volumes:
+      - ./backend:/app
+
+volumes:
+  minio_data:
