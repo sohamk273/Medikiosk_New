@@ -47,11 +47,21 @@ export default function Consultation() {
           let realDocs: PatientDocument[] = [];
           const docsRes = await apiFetchSafe<any[]>(`/encounters/${caseId}/documents`);
           if (docsRes.ok && Array.isArray(docsRes.data)) {
+            const formatDocLabel = (rawType?: string) => {
+              const t = (rawType || '').toLowerCase();
+              if (t.includes('prescription')) return 'Prescription';
+              if (t.includes('lab')) return 'Lab Report';
+              if (t.includes('discharge')) return 'Discharge Summary';
+              if (t.includes('opd')) return 'OPD Slip';
+              if (t.includes('other')) return 'Other Document';
+              return rawType || 'Medical Document';
+            };
+
             realDocs = docsRes.data.map((d: any) => ({
               id: d.id,
               type: (d.document_type?.toLowerCase() || 'other') as any,
-              title: d.file_name,
-              titleHindi: d.file_name,
+              title: formatDocLabel(d.document_type),
+              titleHindi: formatDocLabel(d.document_type),
               fileName: d.file_name,
               status: 'scanned' as const,
               timestamp: d.uploaded_at,
@@ -860,14 +870,22 @@ export default function Consultation() {
                   {caseData.documents && caseData.documents.length > 0 ? (
                     <div className="space-y-2">
                       {caseData.documents.map((doc, idx) => (
-                        <div key={idx} className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200">
-                          <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0 pr-2">
-                            <FileIcon className="w-4 h-4 text-slate-400 shrink-0" />
-                            <p className="text-xs font-bold text-slate-700 truncate">{doc.title}</p>
+                        <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-2 shadow-xs">
+                          <div className="flex items-start gap-2.5 overflow-hidden flex-1 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center shrink-0 mt-0.5">
+                              <FileIcon className="w-4 h-4 text-[#0D9488]" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-slate-800 truncate">{doc.title}</p>
+                              <p className="text-[11px] text-slate-500 truncate">{doc.fileName}</p>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 mt-0.5">
+                                <CheckCircle2 className="w-3 h-3" /> Available
+                              </span>
+                            </div>
                           </div>
                           <button 
                             onClick={() => handleOpenDoc(doc)}
-                            className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded hover:bg-primary/20 transition-colors"
+                            className="text-xs font-bold text-[#0D9488] bg-teal-50 hover:bg-teal-100 border border-teal-200/70 px-3 py-1.5 rounded-lg transition-colors shrink-0 shadow-xs"
                           >
                             View
                           </button>

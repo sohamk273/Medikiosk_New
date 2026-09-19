@@ -4,3 +4,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .claude/
+.env
+.env.local
+medikiosk-frontend/.env
