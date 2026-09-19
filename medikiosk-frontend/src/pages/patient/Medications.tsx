@@ -1,21 +1,21 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
+import { useTranslation } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
 
 export default function Medications() {
   const navigate = useNavigate();
-  const { language, medicationHistory, setMedicationHistory } = usePatientSession();
+  const { t, language } = useTranslation();
+  const { medicationHistory, setMedicationHistory } = usePatientSession();
 
-  // We use local state for the text input to avoid typing lag, 
-  // but sync with context when "Continue" is pressed or blur occurs.
   const [medicinesText, setMedicinesText] = useState(medicationHistory.medicines || '');
 
   const handlePrimarySelect = (status: 'yes_daily' | 'yes_sometimes' | 'no' | 'not_sure') => {
     setMedicationHistory({
       ...medicationHistory,
       takingMedicines: status,
-      // clear medicines text if 'no' or 'not_sure' is selected, to prevent stale data
       medicines: (status === 'no' || status === 'not_sure') ? '' : medicinesText,
       timestamp: new Date().toISOString(),
     });
@@ -35,7 +35,6 @@ export default function Medications() {
 
   const showFollowUp = medicationHistory.takingMedicines === 'yes_daily' || medicationHistory.takingMedicines === 'yes_sometimes';
 
-  // BottomBar hook methods
   const handleContinue = () => {
     if (medicationHistory.takingMedicines) {
       navigate('/patient/allergies');
@@ -46,6 +45,13 @@ export default function Medications() {
     navigate('/patient/ayush');
   };
 
+  useKioskScreen({
+    onContinue: handleContinue,
+    onBack: handleBack,
+    isContinueDisabled: !medicationHistory.takingMedicines,
+    audioPrompt: t('medications.audioGuidance') || 'Are you currently taking any medicines regularly or as needed?',
+  });
+
   const options = [
     { id: 'yes_daily', label: 'Yes, every day', labelHindi: 'हाँ, रोज़' },
     { id: 'yes_sometimes', label: 'Yes, sometimes', labelHindi: 'हाँ, कभी-कभी' },
@@ -55,24 +61,21 @@ export default function Medications() {
 
   return (
     <div className="w-full">
-      <button id="medications-continue-btn" className="hidden" onClick={handleContinue} />
-      <button id="medications-back-btn" className="hidden" onClick={handleBack} />
-
       <StepProgressIndicator
         current={13}
         total={24}
-        title={language === 'hi' ? 'दवाइयों की जानकारी' : language === 'mr' ? 'औषधांची माहिती' : 'MEDICATION HISTORY'}
+        title={t('medications.title')}
       />
 
       <div className="max-w-4xl mx-auto px-6 pt-10 pb-32">
         <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm">
           <div className="flex items-center gap-4 mb-8">
             <div className="w-14 h-14 rounded-2xl bg-[#0D9488]/10 flex items-center justify-center shrink-0">
-              <span className="text-3xl">💊</span>
+              <span className="text-3xl font-bold">💊</span>
             </div>
             <div>
               <h2 className="text-2xl font-bold text-slate-800 leading-tight mb-1">
-                {language === 'hi' ? 'क्या आप कोई दवाई ले रहे हैं?' : 'Are you currently taking any medicines?'}
+                {t('medications.takingMedicines')}
               </h2>
               <p className="text-slate-500">
                 {language === 'hi'
@@ -88,6 +91,7 @@ export default function Medications() {
               return (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => handlePrimarySelect(opt.id)}
                   className={`
                     relative flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all duration-200 text-center min-h-[120px]
@@ -117,18 +121,16 @@ export default function Medications() {
           {showFollowUp && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 bg-slate-50 rounded-2xl p-6 border border-slate-200">
               <h3 className="text-lg font-bold text-slate-800 mb-2">
-                {language === 'hi' ? 'आप कौन-कौन सी दवाइयाँ लेते हैं?' : 'Which medicines do you take?'}
+                {t('medications.whichMedicines')}
               </h3>
               <p className="text-slate-500 text-sm mb-4">
-                {language === 'hi' 
-                  ? 'दवाइयों के नाम या वे किस बीमारी के लिए हैं, वह लिखें' 
-                  : 'Enter the medicine names or what you take them for'}
+                {t('medications.medicinesHint')}
               </p>
               
               <textarea
                 value={medicinesText}
                 onChange={handleTextChange}
-                placeholder={language === 'hi' ? 'दवाइयों के नाम या कारण लिखें' : 'Medicine name or what you take it for'}
+                placeholder={t('medications.medicinesPlaceholder') || 'Medicine name or what you take it for'}
                 className="w-full min-h-[120px] p-4 rounded-xl border-2 border-slate-200 focus:border-[#0D9488] focus:ring-4 focus:ring-[#0D9488]/20 outline-none transition-all resize-none text-lg"
               />
             </div>

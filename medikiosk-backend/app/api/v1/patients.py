@@ -1,16 +1,19 @@
-"""Patient API endpoints for intake, registration, and lookup."""
+"""Patient API endpoints for intake, registration, lookup, and historical encounters."""
 import uuid
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.models.encounter import Encounter
 from app.schemas.patient import (
     PatientCreate,
     PatientRead,
     PatientIdentityCreate,
     PatientIdentityRead,
 )
+from app.schemas.encounter import EncounterRead
 from app.services.patient.patient_service import (
     create_patient,
     get_patient_by_id,
@@ -98,6 +101,28 @@ async def get_patient(
             detail=f"Patient '{patient_id}' not found",
         )
     return PatientRead.model_validate(patient)
+
+
+@router.get(
+    "/{patient_id}/encounters",
+    response_model=List[EncounterRead],
+    summary="List all historical visits for a patient",
+)
+async def get_patient_encounters(
+    patient_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> List[EncounterRead]:
+    """Retrieves all past and active clinical encounters/visits for a patient."""
+    patient = await get_patient_by_id(db, patient_id)
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Patient '{patient_id}' not found",
+        )
+
+    stmt = select(Encounter).where(Encounter.patient_id == patient_id).order_by(Encounter.registered_at.desc())
+    res = await db.execute(stmt)
+    return [EncounterRead.model_validate(enc) for enc in res.scalars().all()]
 
 
 @router.post(

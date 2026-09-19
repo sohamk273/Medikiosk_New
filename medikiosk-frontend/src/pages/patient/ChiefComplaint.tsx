@@ -1,8 +1,10 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mic, Thermometer, Wind, Zap, Droplets, Bone, HelpCircle, CheckCircle2, PlusCircle } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
+import { useTranslation } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
 
 interface Symptom {
   id: string;
@@ -15,7 +17,7 @@ interface Symptom {
 const SYMPTOMS: Symptom[] = [
   {
     id: 'pain',
-    icon: <span className="text-3xl">✕</span>,
+    icon: <span className="text-3xl font-bold">✕</span>,
     hindi: 'दर्द',
     english: 'Pain',
     subtext: 'पेट, सिर या सीने में दर्द',
@@ -50,7 +52,7 @@ const SYMPTOMS: Symptom[] = [
   },
   {
     id: 'skin',
-    icon: <span className="text-3xl">⬇</span>,
+    icon: <span className="text-3xl font-bold">⬇</span>,
     hindi: 'त्वचा की समस्या',
     english: 'Skin, Allergy, Rash',
     subtext: '',
@@ -73,6 +75,7 @@ const SYMPTOMS: Symptom[] = [
 
 export default function ChiefComplaint() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { chiefComplaint, setChiefComplaint } = usePatientSession();
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
     if (chiefComplaint.primaryComplaint) {
@@ -98,14 +101,28 @@ export default function ChiefComplaint() {
     return s ? `${s.hindi} (${s.english})` : sid;
   });
 
+  const handleContinue = () => {
+    if (selectedIds.length > 0) {
+      navigate('/patient/voice');
+    } else {
+      navigate('/patient/voice');
+    }
+  };
+
+  useKioskScreen({
+    onContinue: handleContinue,
+    onBack: () => navigate('/patient/profile'),
+    audioPrompt: t('chiefComplaint.audioGuidance') || 'Tap the microphone to speak, or select a common symptom card below.',
+  });
+
   return (
     <div className="w-full max-w-7xl mx-auto pt-6 px-4 pb-32">
       {/* Page Header */}
       <div className="mb-4">
         <h2 className="text-4xl font-bold text-primary mb-1 font-devanagari">
-          आज आप अस्पताल किस समस्या के लिए आए हैं?
+          {t('chiefComplaint.title')}
         </h2>
-        <p className="text-xl text-slate-600">What brings you to the hospital today?</p>
+        <p className="text-xl text-slate-600">{t('chiefComplaint.subtitle')}</p>
       </div>
 
       <AudioGuidanceBanner
@@ -118,6 +135,7 @@ export default function ChiefComplaint() {
 
         {/* LEFT: Voice AI Panel */}
         <button
+          type="button"
           onClick={() => navigate('/patient/voice')}
           className="relative bg-[#E6FAF5] rounded-3xl p-6 flex flex-col items-center justify-between min-h-[380px] border border-[#A7F3D0] hover:bg-[#D1F4E8] hover:border-[#0D9488] transition-all duration-300 w-full text-left focus:outline-none focus:ring-4 focus:ring-[#0D9488]/30 cursor-pointer shadow-sm hover:shadow-md"
           aria-label="Tap to Speak Your Issue"
@@ -127,7 +145,7 @@ export default function ChiefComplaint() {
             VOICE AI MODE
           </div>
           {/* Translation icon top-right */}
-          <div className="absolute top-4 right-4 text-slate-400 text-xl">𝑨</div>
+          <div className="absolute top-4 right-4 text-slate-400 text-xl font-bold">A</div>
 
           {/* Mic orb */}
           <div className="flex-1 flex flex-col items-center justify-center gap-4 mt-8">
@@ -142,8 +160,8 @@ export default function ChiefComplaint() {
               </div>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-primary font-devanagari">बोलकर बताएं</p>
-              <p className="text-slate-500 text-sm">Tap to Speak Your Issue</p>
+              <p className="text-2xl font-bold text-primary font-devanagari">{t('chiefComplaint.tapToSpeak')}</p>
+              <p className="text-slate-500 text-sm">{t('chiefComplaint.tapToSpeakSub')}</p>
             </div>
           </div>
 
@@ -175,7 +193,7 @@ export default function ChiefComplaint() {
           <div className="flex items-center justify-between mb-4">
             <p className="text-lg font-bold text-primary flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-primary inline-block" />
-              या सामान्य कारण चुनें / Or Choose an Option
+              {t('chiefComplaint.orChoose')}
             </p>
             <span className="text-slate-400 text-sm font-semibold uppercase tracking-wide">
               SINGLE OR MULTI-SELECT
@@ -188,6 +206,7 @@ export default function ChiefComplaint() {
               return (
                 <button
                   key={symptom.id}
+                  type="button"
                   onClick={() => toggleSymptom(symptom.id)}
                   className={`relative rounded-2xl p-4 text-left border-2 transition-all duration-150 flex flex-col gap-2 min-h-[140px] ${
                     isSelected
@@ -233,7 +252,7 @@ export default function ChiefComplaint() {
               <div className="flex items-center gap-2 text-[#0D9488] font-bold text-sm">
                 <CheckCircle2 className="w-5 h-5 fill-[#0D9488] text-white shrink-0" />
                 <span>
-                  Selected for OPD Intake:{' '}
+                  {t('chiefComplaint.selectedCount', { count: selectedIds.length.toString() })}:{' '}
                   <span className="font-devanagari">{selectedLabels.join(' • ')}</span>
                 </span>
               </div>

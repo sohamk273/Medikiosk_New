@@ -1,465 +1,294 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useRef, type DragEvent, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, ScanLine, FileSearch, CheckCircle2, Trash2, ShieldAlert, AlertCircle, UploadCloud } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import type { DocumentType } from '@/features/patient/PatientSessionContext';
-import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
-import { apiFetchSafe } from '@/services/api/client';
+import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
+import { useTranslation } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
+import { 
+  Camera, FileText, CheckCircle2,   Loader2, AlertCircle, FilePlus, Sparkles 
+} from 'lucide-react';
+import type { DocumentType, PatientDocument } from '@/features/patient/PatientSessionContext';
+import { validateDocumentFile } from '@/services/documents/documentService';
 
-type ScanState = 'idle' | 'scanning' | 'processing' | 'scanned';
+interface DocTypeOption {
+  id: DocumentType;
+  label: string;
+  labelHindi: string;
+  icon: React.ReactNode;
+}
 
-const DOCUMENT_OPTIONS: { id: DocumentType; label: string; labelHindi: string; icon: React.ReactNode }[] = [
-  { id: 'prescription', label: 'Prescription', labelHindi: 'पिछली दवाई की पर्ची', icon: <FileText className="w-8 h-8" /> },
-  { id: 'lab_report', label: 'Lab Report', labelHindi: 'जांच रिपोर्ट', icon: <FileSearch className="w-8 h-8" /> },
-  { id: 'discharge_summary', label: 'Discharge Summary', labelHindi: 'डिस्चार्ज सारांश', icon: <FileText className="w-8 h-8" /> },
-  { id: 'opd_slip', label: 'OPD Slip', labelHindi: 'पिछली ओपीडी पर्ची', icon: <FileText className="w-8 h-8" /> },
-  { id: 'other', label: 'Other', labelHindi: 'अन्य', icon: <FileText className="w-8 h-8" /> },
+const DOC_TYPES: DocTypeOption[] = [
+  { id: 'prescription', label: 'Prescription', labelHindi: 'पुराना पर्चा / प्रिस्क्रिप्शन', icon: <FileText className="w-7 h-7" /> },
+  { id: 'lab_report', label: 'Lab Report', labelHindi: 'जांच रिपोर्ट / खून टेस्ट', icon: <FileText className="w-7 h-7" /> },
+  { id: 'discharge_summary', label: 'Discharge Summary', labelHindi: 'डिस्चार्ज सारांश', icon: <FileText className="w-7 h-7" /> },
+  { id: 'opd_slip', label: 'OPD Slip', labelHindi: 'ओपीडी पर्ची', icon: <FileText className="w-7 h-7" /> },
+  { id: 'other', label: 'Other', labelHindi: 'अन्य मेडिकल दस्तावेज', icon: <FileText className="w-7 h-7" /> },
 ];
-
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
 
 export default function Scan() {
   const navigate = useNavigate();
-  const {
-    language,
-    encounterId,
-    patientId,
-    documentIntake,
-    setCurrentDocumentType,
-    addDocument,
-    removeDocument,
-    completeDocumentIntake,
-  } = usePatientSession();
+  const { language, addDocument, documentIntake } = usePatientSession();
+  const { t } = useTranslation();
 
-  const [scanState, setScanState] = useState<ScanState>('idle');
-  const [scanProgress, setScanProgress] = useState(0);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<DocumentType>('prescription');
+  const [isScanning, setIsScanning] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const selectedType = documentIntake.currentDocumentType;
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      setScanState('idle');
-      setScanProgress(0);
-    };
-  }, []);
-
-  const handleDocumentSelect = (type: DocumentType) => {
-    if (scanState === 'idle' || scanState === 'scanned') {
-      setCurrentDocumentType(type);
-      setScanState('idle');
-      setUploadError(null);
-    }
-  };
-
-  const handleTriggerFileSelect = () => {
-    if (scanState === 'scanning' || scanState === 'processing') return;
-    setUploadError(null);
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Reset input so same file can be re-selected if needed
-    e.target.value = '';
-
-    // Validate type
-    const fileType = file.type.toLowerCase();
-    const isAllowedType = ALLOWED_MIME_TYPES.includes(fileType) ||
-      file.name.toLowerCase().endsWith('.pdf') ||
-      file.name.toLowerCase().endsWith('.png') ||
-      file.name.toLowerCase().endsWith('.jpg') ||
-      file.name.toLowerCase().endsWith('.jpeg');
-
-    if (!isAllowedType) {
-      setUploadError(
-        language === 'hi'
-          ? 'अमान्य फ़ाइल प्रकार। केवल PDF, PNG या JPG दस्तावेज़ अनुमत हैं।'
-          : 'Unsupported file type. Only PDF, PNG, or JPG documents are allowed.'
-      );
+  const handleFileProcess = (file: File) => {
+    setErrorMessage(null);
+    const validation = validateDocumentFile(file);
+    if (!validation.valid) {
+      setErrorMessage(validation.error || 'Invalid document file.');
       return;
     }
 
-    // Validate size
-    if (file.size === 0) {
-      setUploadError(
-        language === 'hi' ? 'चयनित फ़ाइल खाली है।' : 'Selected file is empty.'
-      );
-      return;
-    }
+    setIsScanning(true);
+    setTimeout(() => {
+      const typeLabel = DOC_TYPES.find(d => d.id === selectedType)?.label || 'Medical Document';
+      const typeLabelHi = DOC_TYPES.find(d => d.id === selectedType)?.labelHindi || 'मेडिकल दस्तावेज';
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      setUploadError(
-        language === 'hi'
-          ? 'फ़ाइल का आकार 10MB सीमा से अधिक है।'
-          : 'File size exceeds 10MB limit.'
-      );
-      return;
-    }
+      const newDoc: PatientDocument = {
+        id: 'doc_' + Date.now(),
+        title: `${typeLabel}: ${file.name}`,
+        titleHindi: `${typeLabelHi}: ${file.name}`,
+        fileName: file.name,
+        fileSize: file.size,
+        type: selectedType,
+        status: 'scanned',
+        timestamp: new Date().toISOString(),
+        file: file,
+      };
 
-    // Determine active encounter ID
-    let activeEncId = encounterId;
-    if (!activeEncId) {
-      // In sandbox/standalone navigation fallback, attempt to create encounter if patient exists
-      if (patientId) {
-        const encRes = await apiFetchSafe<any>('/encounters', {
-          method: 'POST',
-          body: JSON.stringify({ patient_id: patientId, priority: 'NORMAL' }),
-        });
-        if (encRes.ok && encRes.data?.id) {
-          activeEncId = encRes.data.id;
-        }
-      }
-    }
-
-    if (!activeEncId) {
-      setUploadError(
-        language === 'hi'
-          ? 'कृपया दस्तावेज़ अपलोड करने से पहले पंजीकरण पूरा करें।'
-          : 'Please complete registration to establish an encounter before uploading documents.'
-      );
-      return;
-    }
-
-    // Start scanning / uploading animation
-    setUploadError(null);
-    setScanState('scanning');
-    setScanProgress(20);
-
-    const progressTimer = setInterval(() => {
-      setScanProgress((prev) => (prev < 80 ? prev + 15 : prev));
-    }, 150);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (selectedType) {
-        formData.append('document_type', selectedType.toUpperCase());
-      }
-
-      const res = await apiFetchSafe<any>(`/encounters/${activeEncId}/documents`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      clearInterval(progressTimer);
-
-      if (!res.ok || !res.data) {
-        setScanState('idle');
-        setScanProgress(0);
-        setUploadError(
-          res.error ||
-          (language === 'hi'
-            ? 'सर्वर पर दस्तावेज़ सहेजने में विफल।'
-            : 'Failed to upload document to server.')
-        );
-        return;
-      }
-
-      // Success
-      setScanProgress(100);
-      setScanState('processing');
-
-      setTimeout(() => {
-        const docOpt = DOCUMENT_OPTIONS.find((opt) => opt.id === selectedType);
-        addDocument({
-          id: res.data.id,
-          type: selectedType || 'other',
-          title: docOpt?.label || file.name,
-          titleHindi: docOpt?.labelHindi || file.name,
-          fileName: res.data.file_name,
-          status: 'scanned',
-          timestamp: res.data.uploaded_at,
-        });
-
-        setScanState('scanned');
-        setCurrentDocumentType(null);
-      }, 400);
-
-    } catch (err: any) {
-      clearInterval(progressTimer);
-      setScanState('idle');
-      setScanProgress(0);
-      setUploadError(err?.message || 'Network error uploading document.');
-    }
-  };
-
-  const handleRemove = async (docId: string) => {
-    setIsDeletingId(docId);
-    try {
-      await apiFetchSafe(`/documents/${docId}`, { method: 'DELETE' });
-      removeDocument(docId);
-    } catch {
-      // Still remove from UI session if server fails
-      removeDocument(docId);
-    } finally {
-      setIsDeletingId(null);
-    }
-  };
-
-  // BottomBar proxy methods
-  const handleContinueProxy = () => {
-    if (documentIntake.completed && documentIntake.documents.length === 0) {
-      navigate('/patient/review');
-    } else if (documentIntake.documents.length > 0) {
+      addDocument(newDoc);
+      setIsScanning(false);
       navigate('/patient/documents/review');
-    } else {
-      navigate('/patient/review');
+    }, 800);
+  };
+
+  const handleFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFileProcess(e.target.files[0]);
     }
   };
 
-  const handleBackProxy = () => {
-    navigate('/patient/allergies');
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
   };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileProcess(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleSimulateScan = () => {
+    setErrorMessage(null);
+    setIsScanning(true);
+    setTimeout(() => {
+      const typeLabel = DOC_TYPES.find(d => d.id === selectedType)?.label || 'Medical Document';
+      const typeLabelHi = DOC_TYPES.find(d => d.id === selectedType)?.labelHindi || 'मेडिकल दस्तावेज';
+
+      const newDoc: PatientDocument = {
+        id: 'doc_' + Date.now(),
+        title: selectedType === 'prescription' ? 'Previous Prescription (Scanned)' : selectedType === 'lab_report' ? 'Blood Test Report (Scanned)' : `${typeLabel} (Scanned)`,
+        titleHindi: selectedType === 'prescription' ? 'पुराना पर्चा (स्कैन किया हुआ)' : selectedType === 'lab_report' ? 'जांच रिपोर्ट (स्कैन की गई)' : `${typeLabelHi} (स्कैन)`,
+        fileName: `${selectedType}_scan_${Date.now()}.pdf`,
+        fileSize: 142850,
+        type: selectedType,
+        status: 'scanned',
+        timestamp: new Date().toISOString(),
+        mockOcrText: `OPTICAL SCAN RECORD\nType: ${typeLabel}\nTimestamp: ${new Date().toLocaleString()}\nExtracted: Routine OPD Medical Record`,
+      };
+      addDocument(newDoc);
+      setIsScanning(false);
+      navigate('/patient/documents/review');
+    }, 1200);
+  };
+
+  useKioskScreen({
+    onContinue: () => {
+      if (documentIntake.documents.length > 0) {
+        navigate('/patient/documents/review');
+      } else {
+        handleSimulateScan();
+      }
+    },
+    onBack: () => navigate('/patient/allergies'),
+    continueLabelKey: documentIntake.documents.length > 0 ? 'common.continue' : 'documents.scanNow',
+    audioPrompt: t('documents.audioGuidance') || 'You can scan previous prescriptions or reports, or skip this step.',
+  });
+
+  const docs = documentIntake.documents || [];
 
   return (
     <div className="w-full">
-      <button id="scan-continue-btn" className="hidden" onClick={handleContinueProxy} />
-      <button id="scan-back-btn" className="hidden" onClick={handleBackProxy} />
-
-      {/* Hidden native file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,image/png,image/jpeg,image/jpg"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-
-      <StepProgressIndicator
-        current={15}
-        total={24}
-        title={language === 'hi' ? 'दस्तावेज़ स्कैन' : language === 'mr' ? 'कागदपत्रे स्कॅन' : 'DOCUMENT SCAN'}
-      />
-
-      <div className="max-w-7xl mx-auto px-6 pt-6 pb-32">
-        <div className="mb-6 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center shrink-0">
-            <ScanLine className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-primary leading-tight mb-1">
-              {language === 'hi' ? 'अपने पुराने दस्तावेज़ स्कैन करें' : 'Scan Your Previous Documents'}
-            </h2>
-            <p className="text-slate-500 text-base">
-              {language === 'hi'
-                ? 'अगर आपके पास पिछली पर्ची या जांच की रिपोर्ट है, तो उसे यहाँ अपलोड या स्कैन कर सकते हैं।'
-                : 'If you have a previous prescription or medical report, you can upload or scan it here.'}
-            </p>
-          </div>
+      <div className="max-w-4xl mx-auto px-6 pt-6 pb-32">
+        <div className="text-center mb-6">
+          <h2 className="text-3xl font-black text-primary tracking-tight mb-1 font-devanagari">
+            {t('documents.title')}
+          </h2>
+          <p className="text-slate-600 font-medium">
+            {t('documents.subtitle')}
+          </p>
         </div>
 
-        {/* Upload error banner */}
-        {uploadError && (
-          <div className="mb-6 bg-red-50 border-2 border-red-300 text-red-700 px-6 py-4 rounded-2xl flex items-center gap-3 animate-fade-in">
-            <AlertCircle className="w-6 h-6 shrink-0" />
-            <div className="flex-1 font-bold text-sm">{uploadError}</div>
-            <button
-              onClick={() => setUploadError(null)}
-              className="text-xs bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-lg font-bold transition-colors"
-            >
-              Dismiss
-            </button>
+        <div className="mb-6">
+          <AudioGuidanceBanner
+            englishText="You can upload or scan any previous medical documents (PDF, PNG, JPG), or skip this step."
+            regionalText={language === 'hi' ? 'आप पुराने पर्चे या टेस्ट रिपोर्ट (PDF/फोटो) अपलोड कर सकते हैं, या आगे बढ़ सकते हैं।' : undefined}
+          />
+        </div>
+
+        {/* Error Alert */}
+        {errorMessage && (
+          <div className="mb-6 bg-red-50 border-2 border-red-200 rounded-2xl p-4 flex items-center gap-3 text-red-700 animate-in fade-in">
+            <AlertCircle className="w-6 h-6 shrink-0 text-red-500" />
+            <div className="text-sm font-semibold">{errorMessage}</div>
           </div>
         )}
 
-        <div className="grid grid-cols-[1fr_380px] gap-8">
-          {/* LEFT: Scanning & Upload Area */}
-          <div className="space-y-6">
-            {/* Document Types Selection */}
-            <div className="grid grid-cols-3 gap-3">
-              {DOCUMENT_OPTIONS.map((opt) => {
-                const isSelected = selectedType === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    onClick={() => handleDocumentSelect(opt.id)}
-                    disabled={scanState === 'scanning' || scanState === 'processing'}
-                    className={`
-                      relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 text-center min-h-[120px]
-                      ${
-                        isSelected
-                          ? 'border-[#0D9488] bg-[#F0FDF9]'
-                          : 'border-slate-200 bg-white hover:border-[#0D9488]/30 hover:bg-slate-50'
-                      }
-                      ${(scanState === 'scanning' || scanState === 'processing') && !isSelected ? 'opacity-50 cursor-not-allowed' : ''}
-                    `}
-                  >
-                    {isSelected && (
-                      <div className="absolute top-2 right-2 text-[#0D9488]">
-                        <CheckCircle2 className="w-5 h-5" />
-                      </div>
-                    )}
-                    <div className={`mb-2 ${isSelected ? 'text-[#0D9488]' : 'text-slate-500'}`}>
-                      {opt.icon}
-                    </div>
-                    <span className={`text-sm font-bold mb-1 ${isSelected ? 'text-[#0D9488]' : 'text-slate-700'}`}>
-                      {language === 'hi' ? opt.labelHindi : opt.label}
-                    </span>
-                    <span className={`text-xs ${isSelected ? 'text-[#0D9488]/80' : 'text-slate-500'}`}>
-                      {language === 'hi' ? opt.label : opt.labelHindi}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Interactive Scanner / Upload Frame */}
-            <div
-              onClick={handleTriggerFileSelect}
-              className={`relative w-full h-[400px] border-4 rounded-3xl overflow-hidden flex flex-col items-center justify-center transition-colors duration-300 cursor-pointer ${
-                scanState === 'idle' || scanState === 'scanned'
-                  ? 'border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100/80 hover:border-[#0D9488]/40'
-                  : scanState === 'scanning'
-                  ? 'border-solid border-[#0D9488] bg-[#F0FDF9]'
-                  : 'border-solid border-primary bg-slate-100'
-              }`}
-            >
-              {(scanState === 'idle' || scanState === 'scanned') && (
-                <div className="text-center text-slate-500 space-y-4 px-6">
-                  <div className="w-20 h-20 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center mx-auto text-[#0D9488]">
-                    <UploadCloud className="w-10 h-10" />
+        {/* Document Type Selector */}
+        <div className="mb-6">
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 text-center">
+            {language === 'hi' ? 'दस्तावेज की श्रेणी चुनें' : 'Select Document Category'}
+          </label>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {DOC_TYPES.map((opt) => {
+              const isSelected = selectedType === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedType(opt.id);
+                    setErrorMessage(null);
+                  }}
+                  className={`p-3.5 rounded-2xl border-2 flex flex-col items-center text-center transition-all ${
+                    isSelected
+                      ? 'border-[#064E3B] bg-emerald-50 text-[#064E3B] shadow-sm ring-2 ring-emerald-600/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
+                  }`}
+                >
+                  <div className="mb-1.5 text-[#064E3B]">{opt.icon}</div>
+                  <div className="font-bold text-xs font-devanagari">
+                    {language === 'hi' ? opt.labelHindi : opt.label}
                   </div>
-                  <div>
-                    <p className="text-xl font-bold text-slate-800">
-                      {language === 'hi' ? 'दस्तावेज़ यहाँ रखें या फ़ाइल चुनें' : 'Place your document here or Browse File'}
-                    </p>
-                    <p className="text-sm text-slate-500 mt-1">
-                      {language === 'hi'
-                        ? 'PDF, PNG या JPG (अधिकतम 10MB)'
-                        : 'PDF, PNG or JPG supported (Max 10MB)'}
-                    </p>
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    {language === 'hi' ? opt.label : opt.labelHindi}
                   </div>
-                  <div className="inline-flex items-center gap-2 bg-[#0D9488]/10 text-[#0D9488] px-4 py-2 rounded-xl text-sm font-bold">
-                    <ScanLine className="w-4 h-4" />
-                    {language === 'hi' ? 'फ़ाइल चुनने के लिए क्लिक करें' : 'Click to select / scan file'}
-                  </div>
-                </div>
-              )}
-
-              {scanState === 'scanning' && (
-                <>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <FileText className="w-24 h-24 text-slate-300" />
-                  </div>
-                  <div
-                    className="absolute top-0 left-0 w-full h-1.5 bg-[#0D9488] shadow-[0_0_15px_#0D9488] transition-all duration-[100ms] ease-linear"
-                    style={{ top: `${scanProgress}%` }}
-                  />
-                  <div className="absolute bottom-6 left-0 w-full text-center">
-                    <div className="inline-block bg-white/90 backdrop-blur px-6 py-2 rounded-full shadow-sm text-[#0D9488] font-bold animate-pulse">
-                      {language === 'hi' ? 'दस्तावेज़ अपलोड हो रहा है...' : 'Uploading document to storage...'}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {scanState === 'processing' && (
-                <div className="text-center text-primary space-y-4">
-                  <div className="w-12 h-12 border-4 border-[#0D9488] border-t-transparent rounded-full animate-spin mx-auto" />
-                  <div className="font-bold text-slate-700">
-                    {language === 'hi' ? 'दस्तावेज़ रिकॉर्ड सुरक्षित किया जा रहा है...' : 'Securing document record...'}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Scan / Upload Action Button */}
-            <div className="flex justify-center">
-              <button
-                onClick={handleTriggerFileSelect}
-                disabled={scanState === 'scanning' || scanState === 'processing'}
-                className={`
-                  px-12 py-4 rounded-2xl font-bold text-xl flex items-center gap-3 transition-colors shadow-lg
-                  ${
-                    scanState === 'scanning' || scanState === 'processing'
-                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                      : 'bg-[#0D9488] text-white hover:bg-[#0B8070]'
-                  }
-                `}
-              >
-                <ScanLine className="w-6 h-6" />
-                {language === 'hi' ? 'दस्तावेज़ अपलोड / स्कैन करें' : 'Scan / Upload Document'}
-              </button>
-            </div>
-
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={() => {
-                  completeDocumentIntake(true);
-                  navigate('/patient/review');
-                }}
-                className="px-6 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors"
-              >
-                {language === 'hi' ? 'मेरे पास कोई दस्तावेज़ नहीं है' : "I don't have any documents"}
-              </button>
-            </div>
-          </div>
-
-          {/* RIGHT: Scanned Documents List */}
-          <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 flex flex-col h-full max-h-[700px] overflow-hidden">
-            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-[#0D9488]" />
-              {language === 'hi' ? 'स्कैन किए गए दस्तावेज़' : 'Scanned Documents'}
-              <span className="ml-auto bg-white border border-slate-200 px-2 py-1 rounded-md text-sm text-slate-500">
-                {documentIntake.documents.length}
-              </span>
-            </h3>
-
-            <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-              {documentIntake.documents.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl">
-                  <FileSearch className="w-12 h-12 mb-3 opacity-50" />
-                  <p className="font-medium text-sm">
-                    {language === 'hi' ? 'अभी कोई दस्तावेज़ नहीं जोड़ा गया है' : 'No documents added yet'}
-                  </p>
-                </div>
-              ) : (
-                documentIntake.documents.map((doc) => (
-                  <div key={doc.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#F0FDF9] text-[#0D9488] flex items-center justify-center shrink-0">
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-slate-800 text-sm truncate">
-                        {language === 'hi' ? doc.titleHindi : doc.title}
-                      </p>
-                      <p className="text-xs text-slate-500 truncate">{doc.fileName}</p>
-                      <div className="flex items-center gap-1 mt-1 text-[#0D9488] text-xs font-semibold">
-                        <CheckCircle2 className="w-3 h-3" /> Stored in MinIO
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleRemove(doc.id)}
-                      disabled={isDeletingId === doc.id}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                      aria-label="Remove"
-                      title="Delete document"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Privacy notice */}
-            <div className="mt-4 pt-4 border-t border-slate-200 flex items-start gap-2 text-slate-500 text-xs">
-              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-              <p>
-                {language === 'hi'
-                  ? 'आपके दस्तावेज़ सुरक्षित रूप से संग्रहीत हैं और केवल परामर्श के लिए अधिकृत डॉक्टर द्वारा देखे जा सकते हैं।'
-                  : 'Your documents are securely stored and accessible only to authorized clinical doctors.'}
-              </p>
-            </div>
+                </button>
+              );
+            })}
           </div>
         </div>
+
+        {/* Hidden File Input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,image/png,image/jpeg,image/jpg"
+          className="hidden"
+          onChange={handleFileInputChange}
+        />
+
+        {/* Interactive Dropzone / Scanner Hardware Area */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`bg-slate-900 rounded-3xl p-8 text-center text-white relative overflow-hidden shadow-xl mb-6 transition-all ${
+            isDragging ? 'ring-4 ring-emerald-400 bg-slate-800' : ''
+          }`}
+        >
+          <div className="border-2 border-dashed border-emerald-400/50 rounded-2xl h-64 flex flex-col items-center justify-center relative p-4">
+            {isScanning ? (
+              <div className="flex flex-col items-center">
+                <Loader2 className="w-14 h-14 text-emerald-400 animate-spin mb-3" />
+                <p className="text-emerald-300 font-bold text-lg font-devanagari">
+                  {language === 'hi' ? 'दस्तावेज प्रोसेस हो रहा है...' : 'Processing Document...'}
+                </p>
+                <p className="text-slate-400 text-xs mt-1">Preparing high resolution image & metadata...</p>
+              </div>
+            ) : (
+              <>
+                <Camera className="w-16 h-16 text-emerald-400 mb-3 opacity-90 animate-pulse" />
+                <p className="font-bold text-xl text-emerald-300 font-devanagari">
+                  {language === 'hi' ? 'दस्तावेज अपलोड करें या स्कैनर पर रखें' : 'Upload Medical File or Scan Document'}
+                </p>
+                <p className="text-slate-300 text-xs mt-1.5 max-w-md">
+                  {language === 'hi' 
+                    ? 'PDF, PNG, JPG फाइलें (अधिकतम 10MB) ड्रैग करें या नीचे बटन पर क्लिक करें' 
+                    : 'Drag & drop PDF, PNG, or JPG files (up to 10MB) or browse your files'}
+                </p>
+
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow-md flex items-center gap-2 text-sm transition-all hover:scale-[1.02]"
+                  >
+                    <FilePlus className="w-4 h-4" />
+                    <span>{language === 'hi' ? 'फाइल चुनें (Browse File)' : 'Browse File / Photo'}</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Viewfinder corner guides */}
+            <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-emerald-400" />
+            <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-emerald-400" />
+            <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-emerald-400" />
+            <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-emerald-400" />
+          </div>
+
+          <div className="mt-6 flex items-center justify-center flex-wrap gap-4">
+            <button
+              type="button"
+              disabled={isScanning}
+              onClick={handleSimulateScan}
+              className="bg-[#0D9488] hover:bg-[#0f766e] text-white font-bold px-7 py-3 rounded-2xl shadow-lg flex items-center gap-2 text-sm transition-all disabled:opacity-50"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{t('documents.scanNow')} (Hardware Scan Demo)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/patient/review')}
+              className="bg-white/10 hover:bg-white/20 text-white font-medium px-6 py-3 rounded-2xl border border-white/20 text-sm transition-all"
+            >
+              <span>{t('documents.skipBtn')}</span>
+            </button>
+          </div>
+        </div>
+
+        {docs.length > 0 && (
+          <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-[#064E3B]" />
+              <span className="text-sm font-bold text-[#064E3B]">
+                {docs.length} {language === 'hi' ? 'दस्तावेज संलग्न किए गए' : 'document(s) currently attached'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/patient/documents/review')}
+              className="text-xs font-bold text-[#064E3B] underline hover:text-[#053F30]"
+            >
+              {language === 'hi' ? 'दस्तावेज देखें →' : 'View Documents →'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

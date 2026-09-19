@@ -1,12 +1,15 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Phone, BellRing, ArrowRight } from 'lucide-react';
+import { AlertTriangle, BellRing, ArrowRight } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
+import { useTranslation } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
 
 export default function Allergies() {
   const navigate = useNavigate();
-  const { language, allergyHistory, setAllergyHistory } = usePatientSession();
+  const { t, language } = useTranslation();
+  const { allergyHistory, setAllergyHistory } = usePatientSession();
   
   const [staffCalled, setStaffCalled] = useState(false);
 
@@ -43,21 +46,20 @@ export default function Allergies() {
   };
 
   const handleContinueAfterRedFlag = () => {
-    // Keeps state intact, clears flag visually so user can continue
     setAllergyHistory({
       ...allergyHistory,
       breathingDifficulty: false,
     });
+    navigate('/patient/documents/scan');
   };
 
-  // BottomBar hook methods
   const handleContinue = () => {
     if (allergyHistory.hasAllergy === 'no' || allergyHistory.hasAllergy === 'not_sure') {
       navigate('/patient/documents/scan');
     } else if (allergyHistory.hasAllergy === 'yes' && allergyHistory.allergyType && allergyHistory.reaction) {
-      if (!allergyHistory.breathingDifficulty) {
-        navigate('/patient/documents/scan');
-      }
+      navigate('/patient/documents/scan');
+    } else if (allergyHistory.hasAllergy === 'yes') {
+      navigate('/patient/documents/scan');
     }
   };
 
@@ -65,98 +67,53 @@ export default function Allergies() {
     navigate('/patient/medications');
   };
 
-  // Code Yellow Render
-  if (allergyHistory.hasAllergy === 'yes' && allergyHistory.breathingDifficulty) {
+  useKioskScreen({
+    onContinue: handleContinue,
+    onBack: handleBack,
+    isContinueDisabled: !allergyHistory.hasAllergy,
+    audioPrompt: t('allergies.audioGuidance') || 'Do you have any known allergies to medicines, foods, or dust?',
+  });
+
+  if (allergyHistory.breathingDifficulty) {
     return (
       <div className="w-full">
         <StepProgressIndicator
           current={14}
           total={24}
-          title="CLINICAL SAFETY ALERT • आपातकालीन सहायता प्राथमिकता"
-          badge="Step 14 / 24"
+          title="SAFETY ALERT"
+          badge="Breathing Reaction Alert"
         />
-        <div className="max-w-7xl mx-auto px-6 pt-6 pb-32">
-          <div className="flex items-center justify-center mb-6">
-            <div className="bg-destructive text-white rounded-full px-6 py-2 flex items-center gap-2 font-bold text-sm shadow-lg">
-              <AlertTriangle className="w-5 h-5" />
-              CLINICAL SAFETY ALERT • आपातकालीन सहायता प्राथमिकता
-            </div>
-          </div>
 
-          <div className="text-center mb-6">
-            <h2 className="text-4xl font-bold text-destructive mb-2 leading-tight">
-              Immediate Attention Needed / <span className="font-devanagari">कृपया यहीं रुकें, सहायता आ रही है</span>
-            </h2>
-            <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              {language === 'hi'
-                ? 'आपका उत्तर दर्शाता है कि आपको तुरंत सहायता की आवश्यकता हो सकती है। कृपया यहाँ प्रतीक्षा करें।'
-                : 'Your answer indicates you may need immediate assistance. Please stay here and wait for staff.'
-              }
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-6">
-            <div className="bg-red-50 border-2 border-destructive rounded-3xl p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-destructive font-bold">
-                  <span className="text-sm uppercase tracking-wider">ESCORT & DIRECT ASSISTANCE</span>
-                </div>
-                <span className="bg-destructive text-white text-xs font-bold px-3 py-1 rounded-full">
-                  CODE YELLOW
+        <div className="max-w-4xl mx-auto px-6 pt-6 pb-32">
+          <div className="bg-red-50 border-2 border-red-400 rounded-3xl p-8 mb-6 shadow-sm">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-9 h-9 text-red-600" />
+              </div>
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider bg-red-200 text-red-800 px-3 py-1 rounded-full">
+                  ALLERGY RED FLAG
                 </span>
-              </div>
-              <div className="flex items-center gap-4 bg-white rounded-2xl p-4 border border-red-200">
-                <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
-                  <span className="text-2xl">🏥</span>
-                </div>
-                <div>
-                  <p className="font-bold text-primary">Consultation Room 1B</p>
-                  <p className="text-slate-500 text-sm">Emergency Triage • ECG Kiosk</p>
-                </div>
-              </div>
-              <div className="space-y-3 text-sm text-slate-700">
-                <p className="font-devanagari">आपकी सुरक्षा के लिए, अस्पताल सहायक आपको सीधे परामर्श कक्ष ले जाने आ रहे हैं।</p>
-                <p className="text-slate-600">For your safety, hospital staff are on their way to assist you to the consultation room directly.</p>
-              </div>
-              <div className="bg-white border border-red-200 rounded-2xl p-3 flex items-center gap-3">
-                <span className="text-destructive text-lg">📟</span>
-                <div>
-                  <p className="font-bold text-sm text-primary">Staff Alert Active</p>
-                  <p className="text-slate-500 text-xs">सहायक को सूचित किया गया है • Duty Sahayak notified</p>
-                </div>
-                <span className="ml-auto text-[#0D9488] text-xs font-bold animate-pulse">● ACTIVE</span>
+                <h2 className="text-2xl font-bold text-red-800 mt-1">
+                  {language === 'hi' ? 'सांस लेने में कठिनाई की सूचना' : 'Breathing Difficulty Alert'}
+                </h2>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-2xl p-4 flex items-start gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#0D9488] flex items-center justify-center shrink-0">
-                  <span className="text-white text-lg">🔊</span>
-                </div>
-                <div>
-                  <p className="font-bold text-primary text-sm">AUDIO GUIDANCE PLAYING (हिन्दी / ENGLISH)</p>
-                  <p className="text-slate-600 text-sm font-devanagari mt-1">"कृपया शांत रहें। सहायक आपकी सहायता के लिए आ रहे हैं।"</p>
-                  <p className="text-slate-500 text-xs mt-1 italic">"Please stay calm. Staff are coming to assist you."</p>
-                </div>
-              </div>
-              <div className="bg-[#EFF6FF] rounded-2xl p-4 border border-[#BFDBFE]">
-                <p className="font-bold text-[#1E40AF] text-sm mb-1">
-                  {language === 'hi' ? 'अगर आप बहुत बेचैन या सांस में तकलीफ महसूस करें:' : 'Feeling very unwell or breathless?'}
-                </p>
-                <p className="text-slate-600 text-sm font-devanagari">
-                  {language === 'hi'
-                    ? 'ऊपर दाईं ओर दिए गए लाल "Help / सहायता" बटन को दबाएं या तुरंत बैठ जाएं।'
-                    : 'Press the red "Help / Sahayata" button at the top right, or sit down immediately.'
-                  }
-                </p>
-              </div>
+            <p className="text-red-700 text-base leading-relaxed mb-6">
+              {language === 'hi'
+                ? 'आपने बताया कि आपको सांस लेने में तकलीफ होती है। यह एक गंभीर प्रतिक्रिया हो सकती है। कृपया हमारे सहायक को सूचित करें।'
+                : 'You reported breathing difficulty as an allergic reaction. A medical staff member is available to assist immediately.'}
+            </p>
 
+            <div className="flex flex-col gap-3">
               {!staffCalled ? (
                 <button
+                  type="button"
                   onClick={handleCallSahayak}
-                  className="w-full bg-destructive text-white rounded-2xl py-5 flex items-center justify-center gap-3 font-bold text-xl hover:bg-destructive/90 transition-colors shadow-lg"
+                  className="w-full bg-red-600 hover:bg-red-700 text-white rounded-2xl py-5 flex items-center justify-center gap-3 font-bold text-xl transition-colors shadow-md"
                 >
-                  <Phone className="w-6 h-6" />
+                  <AlertTriangle className="w-6 h-6" />
                   {language === 'hi' ? 'सहायक को अभी बुलाएं / Call Sahayak Now' : 'Call Sahayak Now / सहायक को अभी बुलाएं'}
                 </button>
               ) : (
@@ -167,6 +124,7 @@ export default function Allergies() {
               )}
 
               <button
+                type="button"
                 onClick={handleContinueAfterRedFlag}
                 className="w-full bg-slate-100 text-slate-700 rounded-2xl py-4 flex items-center justify-center gap-2 font-bold text-base hover:bg-slate-200 transition-colors border border-slate-200"
               >
@@ -180,27 +138,23 @@ export default function Allergies() {
     );
   }
 
-  // Normal Screen
   return (
     <div className="w-full">
-      <button id="allergies-continue-btn" className="hidden" onClick={handleContinue} />
-      <button id="allergies-back-btn" className="hidden" onClick={handleBack} />
-
       <StepProgressIndicator
         current={14}
         total={24}
-        title={language === 'hi' ? 'एलर्जी की जानकारी' : language === 'mr' ? 'अॅलर्जीची माहिती' : 'ALLERGY HISTORY'}
+        title={t('allergies.title')}
       />
 
       <div className="max-w-4xl mx-auto px-6 pt-10 pb-32">
         <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm">
           <div className="flex items-center gap-4 mb-8">
             <div className="w-14 h-14 rounded-2xl bg-[#0D9488]/10 flex items-center justify-center shrink-0">
-              <span className="text-3xl">⚠️</span>
+              <span className="text-3xl font-bold">⚠️</span>
             </div>
             <div>
               <h2 className="text-2xl font-bold text-slate-800 leading-tight mb-1">
-                {language === 'hi' ? 'क्या आपको किसी चीज़ से एलर्जी है?' : 'Do you have any allergies?'}
+                {t('allergies.hasAllergies')}
               </h2>
             </div>
           </div>
@@ -215,6 +169,7 @@ export default function Allergies() {
               return (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => handlePrimarySelect(opt.id as any)}
                   className={`
                     relative flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all duration-200 text-center min-h-[120px]
@@ -245,7 +200,7 @@ export default function Allergies() {
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-6">
               <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
                 <h3 className="text-lg font-bold text-slate-800 mb-4">
-                  {language === 'hi' ? 'आपको किस चीज़ से एलर्जी है?' : 'What are you allergic to?'}
+                  {t('allergies.whatAllergicTo')}
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   {[
@@ -256,6 +211,7 @@ export default function Allergies() {
                   ].map((opt) => (
                     <button
                       key={opt.id}
+                      type="button"
                       onClick={() => handleTypeSelect(opt.id)}
                       className={`p-4 rounded-xl border-2 text-left transition-colors ${
                         allergyHistory.allergyType === opt.id 
@@ -273,7 +229,7 @@ export default function Allergies() {
               {allergyHistory.allergyType && (
                 <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
                   <h3 className="text-lg font-bold text-slate-800 mb-4">
-                    {language === 'hi' ? 'उस चीज़ के संपर्क में आने पर क्या होता है?' : 'What happens when you are exposed?'}
+                    {t('allergies.whatHappens')}
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
                     {[
@@ -284,6 +240,7 @@ export default function Allergies() {
                     ].map((opt) => (
                       <button
                         key={opt.id}
+                        type="button"
                         onClick={() => handleReactionSelect(opt.id, opt.redFlag)}
                         className={`p-4 rounded-xl border-2 text-left transition-colors ${
                           allergyHistory.reaction === opt.id 

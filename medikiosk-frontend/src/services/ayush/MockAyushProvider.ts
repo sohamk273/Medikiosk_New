@@ -18,196 +18,164 @@ export interface AyushQuestion {
 
 const MOCK_TRANSCRIPTS: Record<string, Record<Language, string>> = {
   q1_appetite: {
-    hi: 'मेरी भूख बिल्कुल सामान्य है।',
+    hi: 'मेरी भूख सामान्य है, दिन में दो बार सही समय पर खाना खाता हूँ।',
     en: 'My appetite is completely normal.',
-    mr: 'माझी भूक पूर्णपणे सामान्य आहे.',
+    mr: 'माझी भूक सामान्य आहे, योग्य वेळी जेवतो.',
   },
   q2_digestion: {
-    hi: 'पाचन ठीक रहता है, कभी-कभी हल्का भारीपन लगता है।',
+    hi: 'पाचन ठीक है, कभी-कभी पेट में भारीपन महसूस होता है।',
     en: 'Digestion is fine, sometimes I feel a bit heavy.',
-    mr: 'पचन ठीक असते, कधीकधी थोडं जड वाटतं.',
+    mr: 'पचन ठीक आहे, कधीकधी पोट जड वाटते.',
   },
   q3_thirst: {
-    hi: 'मुझे दिन में कई बार प्यास लगती है।',
+    hi: 'दिन में सामान्य रूप से पानी पीता हूँ, प्यास सामान्य है।',
     en: 'I feel thirsty multiple times a day.',
-    mr: 'मला दिवसातून अनेक वेळा तहान लागते.',
+    mr: 'दिवसात सामान्य प्रमाणात पाणी पितो.',
   },
   q4_sleep: {
-    hi: 'मेरी नींद अच्छी है, रात भर आराम से सोता हूँ।',
+    hi: 'नींद अच्छी आती है, रात में ६-७ घंटे सोता हूँ।',
     en: 'My sleep is good, I sleep comfortably through the night.',
-    mr: 'माझी झोप चांगली आहे, रात्रभर आरामात झोपतो.',
+    mr: 'झोप चांगली लागते, रात्री शांत झोप होते.',
   },
   q5_energy: {
-    hi: 'मैं दिन भर सामान्य और सक्रिय महसूस करता हूँ।',
+    hi: 'दिनभर सामान्य ऊर्जा रहती है, काम करने में कोई दिक्कत नहीं होती।',
     en: 'I feel normal and active throughout the day.',
-    mr: 'मी दिवसभर सामान्य आणि सक्रिय अनुभवतो.',
+    mr: 'दिवसभरात ऊर्जा चांगली राहते.',
   },
   q6_temperature: {
-    hi: 'मुझे दोनों मौसम ठीक लगते हैं, पर ज़्यादा गर्मी से परेशानी होती है।',
-    en: 'I am comfortable in both, but extreme heat bothers me.',
-    mr: 'मला दोन्ही ऋतू ठीक वाटतात, पण जास्त उकाड्याचा त्रास होतो.',
+    hi: 'शरीर का तापमान सामान्य रहता है, ठंड या गर्मी ज्यादा नहीं लगती।',
+    en: 'Normal temperature sensitivity.',
+    mr: 'तापमान सहनशीलता सामान्य आहे.',
   },
   q7_bowel: {
-    hi: 'मेरा पेट रोज़ साफ होता है।',
-    en: 'My bowel movements are regular every day.',
-    mr: 'माझे पोट रोज साफ होते.',
+    hi: 'पेट साफ होने में कोई खास परेशानी नहीं होती, नियमित है।',
+    en: 'Regular bowel movements once daily in the morning.',
+    mr: 'पोट नियमित साफ होते, कोणतीही अडचण नाही.',
   },
-  q8_bloating: {
-    hi: 'खाना खाने के बाद कभी-कभी पेट भारी हो जाता है।',
-    en: 'Sometimes my stomach feels heavy after eating.',
-    mr: 'जेवणानंतर कधीकधी पोट जड होतं.',
-  },
-  q9_vitality: {
-    hi: 'मेरी ऊर्जा सामान्य है, मैं अपना सारा काम कर लेता हूँ।',
-    en: 'My energy is normal, I can manage all my work.',
-    mr: 'माझी ऊर्जा सामान्य आहे, मी माझं सगळं काम करू शकतो.',
-  },
-  q10_routine: {
-    hi: 'मेरी दिनचर्या अधिकतर नियमित ही रहती है।',
-    en: 'My routine is mostly regular.',
-    mr: 'माझी दिनचर्या बहुतांशी नियमित असते.',
+  q8_sweat: {
+    hi: 'पसीना सामान्य रूप से आता है, मौसम के अनुसार।',
+    en: 'Normal sweating according to the weather.',
+    mr: 'सामान्य घाम येतो.',
   },
 };
-
-export class MockAyushProvider {
-  /**
-   * Returns a deterministic mock answer transcript for the selected question and language.
-   */
-  static getMockAnswer(lang: Language, questionId: string): string {
-    const questionMap = MOCK_TRANSCRIPTS[questionId];
-    if (!questionMap) {
-      return lang === 'hi' ? 'यह सामान्य है।' : lang === 'mr' ? 'हे सामान्य आहे.' : 'This is normal.';
-    }
-    return questionMap[lang] ?? questionMap['en'];
-  }
-
-  /**
-   * Returns deterministic processing duration in milliseconds.
-   */
-  static getProcessingDuration(): number {
-    return 1800;
-  }
-}
 
 export const AYUSH_QUESTIONS: AyushQuestion[] = [
   {
     id: 'q1_appetite',
-    internalField: 'ahara_shakti',
-    question: 'How is your appetite these days?',
-    questionHindi: 'इन दिनों आपकी भूख कैसी रहती है?',
+    internalField: 'appetite',
+    question: 'How is your appetite (hunger)?',
+    questionHindi: 'आपकी भूख कैसी है?',
+    questionMarathi: 'तुमची भूक कशी आहे?',
     touchOptions: [
-      { id: 'opt_very_good', label: 'Very Good', labelHindi: 'बहुत अच्छी' },
-      { id: 'opt_normal', label: 'Normal', labelHindi: 'सामान्य' },
-      { id: 'opt_low', label: 'Low', labelHindi: 'कम' },
-      { id: 'opt_very_low', label: 'Very Low', labelHindi: 'बहुत कम' },
+      { id: 'good', label: 'Good / Normal', labelHindi: 'अच्छी / सामान्य', labelMarathi: 'चांगली / सामान्य' },
+      { id: 'low', label: 'Low / Reduced', labelHindi: 'कम / भूख नहीं लगती', labelMarathi: 'कमी' },
+      { id: 'excessive', label: 'Excessive / Always hungry', labelHindi: 'बहुत ज्यादा / बार-बार भूख', labelMarathi: 'खूप जास्त' },
+      { id: 'irregular', label: 'Irregular / Varies daily', labelHindi: 'अनियमित / कभी ज्यादा कभी कम', labelMarathi: 'अनियमित' },
     ],
   },
   {
     id: 'q2_digestion',
-    internalField: 'agni',
-    question: 'How is your digestion after meals?',
+    internalField: 'digestion',
+    question: 'How is your digestion after eating?',
     questionHindi: 'खाना खाने के बाद आपका पाचन कैसा रहता है?',
+    questionMarathi: 'जेवणानंतर पचन कसे होते?',
     touchOptions: [
-      { id: 'opt_comfortable', label: 'Comfortable', labelHindi: 'आराम से' },
-      { id: 'opt_sometimes_heavy', label: 'Sometimes Heavy', labelHindi: 'कभी-कभी भारी' },
-      { id: 'opt_often_heavy', label: 'Often Heavy', labelHindi: 'अक्सर भारी' },
-      { id: 'opt_very_difficult', label: 'Very Difficult', labelHindi: 'बहुत कठिन' },
+      { id: 'normal', label: 'Normal & comfortable', labelHindi: 'सामान्य और सहज', labelMarathi: 'सामान्य व सुलभ' },
+      { id: 'bloating', label: 'Gas / Bloating / Heaviness', labelHindi: 'गैस / भारीपन / पेट फूलना', labelMarathi: 'गॅस / पोट जड होणे' },
+      { id: 'acidity', label: 'Acidity / Heartburn', labelHindi: 'खट्टी डकार / जलन', labelMarathi: 'अॅसिडिटी / जळजळ' },
+      { id: 'slow', label: 'Very slow / Sluggish', labelHindi: 'बहुत धीमा पाचन', labelMarathi: 'अतिशय मंद पचन' },
     ],
   },
   {
     id: 'q3_thirst',
-    internalField: 'trishna',
-    question: 'How often do you feel thirsty?',
-    questionHindi: 'आपको कितनी बार प्यास लगती है?',
+    internalField: 'thirst',
+    question: 'How often do you feel thirsty throughout the day?',
+    questionHindi: 'दिनभर में आपको प्यास कैसी लगती है?',
+    questionMarathi: 'दिवसभरात तुम्हाला तहान कशी लागते?',
     touchOptions: [
-      { id: 'opt_normal', label: 'Normal', labelHindi: 'सामान्य' },
-      { id: 'opt_more_often', label: 'More Often', labelHindi: 'अधिक' },
-      { id: 'opt_very_often', label: 'Very Often', labelHindi: 'बहुत अधिक' },
-      { id: 'opt_rarely', label: 'Rarely', labelHindi: 'बहुत कम' },
+      { id: 'normal', label: 'Normal (6–8 glasses)', labelHindi: 'सामान्य (६-८ गिलास)', labelMarathi: 'सामान्य' },
+      { id: 'frequent', label: 'Excessive / Dry throat', labelHindi: 'बहुत ज्यादा / गला सूखना', labelMarathi: 'खूप जास्त / घसा कोरडा' },
+      { id: 'low', label: 'Rarely feel thirsty', labelHindi: 'बहुत कम प्यास लगती है', labelMarathi: 'कमी' },
     ],
   },
   {
     id: 'q4_sleep',
-    internalField: 'nidra',
-    question: 'How is your sleep?',
-    questionHindi: 'आपकी नींद कैसी रहती है?',
+    internalField: 'sleep',
+    question: 'How is your sleep quality?',
+    questionHindi: 'आपकी नींद कैसी है?',
+    questionMarathi: 'तुमची झोप कशी आहे?',
     touchOptions: [
-      { id: 'opt_good', label: 'Good', labelHindi: 'अच्छी' },
-      { id: 'opt_light', label: 'Light', labelHindi: 'हल्की' },
-      { id: 'opt_interrupted', label: 'Interrupted', labelHindi: 'बार-बार टूटती है' },
-      { id: 'opt_very_poor', label: 'Very Poor', labelHindi: 'बहुत खराब' },
+      { id: 'sound', label: 'Sound / Deep (6–8 hrs)', labelHindi: 'गहरी और अच्छी नींद (६-८ घंटे)', labelMarathi: 'गाढ व शांत' },
+      { id: 'disturbed', label: 'Disturbed / Wake up often', labelHindi: 'खराब / बार-बार खुलती है', labelMarathi: 'अशांत / वारंवार मोडणारी' },
+      { id: 'insomnia', label: 'Difficulty falling asleep', labelHindi: 'नींद आने में कठिनाई', labelMarathi: 'झोप न येणे' },
+      { id: 'excessive', label: 'Excessive drowsiness', labelHindi: 'दिनभर बहुत आलस / ज्यादा नींद', labelMarathi: 'अति झोप' },
     ],
   },
   {
     id: 'q5_energy',
-    internalField: 'bala',
-    question: 'How do you usually feel during the day?',
-    questionHindi: 'दिन में आप आमतौर पर कैसा महसूस करते हैं?',
+    internalField: 'energy',
+    question: 'How are your energy levels during the day?',
+    questionHindi: 'दिनभर में आपके शरीर की ऊर्जा (स्फूर्ति) कैसी रहती है?',
+    questionMarathi: 'दिवसभरात तुमची ऊर्जा कशी असते?',
     touchOptions: [
-      { id: 'opt_energetic', label: 'Energetic', labelHindi: 'ऊर्जावान' },
-      { id: 'opt_normal', label: 'Normal', labelHindi: 'सामान्य' },
-      { id: 'opt_tired', label: 'Tired', labelHindi: 'थका हुआ' },
-      { id: 'opt_very_weak', label: 'Very Weak', labelHindi: 'बहुत कमजोरी' },
+      { id: 'high', label: 'Energetic & active', labelHindi: 'ऊर्जावान और सक्रिय', labelMarathi: 'उत्साही व ताजेतवाने' },
+      { id: 'moderate', label: 'Normal / Average', labelHindi: 'सामान्य / ठीक-ठाक', labelMarathi: 'मध्यम / ठीक' },
+      { id: 'fatigue', label: 'Tired / Low energy', labelHindi: 'जल्दी थक जाना / कमजोरी', labelMarathi: 'थकवा / अशक्तपणा' },
     ],
   },
   {
     id: 'q6_temperature',
-    internalField: 'temperature_tolerance',
-    question: 'How do you usually feel in hot or cold weather?',
-    questionHindi: 'गर्मी या ठंड के मौसम में आपको कैसा महसूस होता है?',
+    internalField: 'temperature_sensitivity',
+    question: 'Are you more sensitive to cold or heat?',
+    questionHindi: 'आपको ठंड या गर्मी में से क्या ज्यादा परेशान करता है?',
+    questionMarathi: 'तुम्हाला थंडी की उष्णता जास्त त्रासदायक वाटते?',
     touchOptions: [
-      { id: 'opt_comfortable_both', label: 'Comfortable in both', labelHindi: 'दोनों में आरामदायक' },
-      { id: 'opt_prefer_warm', label: 'Prefer Warm', labelHindi: 'गर्मी पसंद' },
-      { id: 'opt_prefer_cool', label: 'Prefer Cool', labelHindi: 'ठंडक पसंद' },
-      { id: 'opt_sensitive_both', label: 'Sensitive to both', labelHindi: 'दोनों से परेशानी' },
+      { id: 'cold', label: 'Cannot tolerate cold', labelHindi: 'ठंड ज्यादा लगती है', labelMarathi: 'थंडी जास्त सहन होत नाही' },
+      { id: 'heat', label: 'Cannot tolerate heat', labelHindi: 'गर्मी ज्यादा लगती है', labelMarathi: 'उष्णता जास्त सहन होत नाही' },
+      { id: 'neutral', label: 'Tolerate both equally', labelHindi: 'दोनों सामान्य लगते हैं', labelMarathi: 'दोन्ही समान' },
     ],
   },
   {
     id: 'q7_bowel',
-    internalField: 'koshta',
-    question: 'How is your bowel movement usually?',
-    questionHindi: 'आपका मल त्याग आमतौर पर कैसा रहता है?',
+    internalField: 'bowel_habits',
+    question: 'How are your daily bowel movements?',
+    questionHindi: 'आपका पेट साफ होने की आदत कैसी है?',
+    questionMarathi: 'तुमचे पोट कसे साफ होते?',
     touchOptions: [
-      { id: 'opt_regular', label: 'Regular', labelHindi: 'नियमित' },
-      { id: 'opt_sometimes_constipated', label: 'Sometimes Constipated', labelHindi: 'कभी-कभी कब्ज' },
-      { id: 'opt_often_constipated', label: 'Often Constipated', labelHindi: 'अक्सर कब्ज' },
-      { id: 'opt_loose', label: 'Loose', labelHindi: 'ढीला' },
+      { id: 'regular', label: 'Regular once daily', labelHindi: 'नियमित रोज़ सुबह एक बार', labelMarathi: 'रोज सकाळी नियमित' },
+      { id: 'constipated', label: 'Constipated / Hard / Irregular', labelHindi: 'कब्ज / सख्त / कभी-कभी', labelMarathi: 'बद्धकोष्ठता / कठीण' },
+      { id: 'loose', label: 'Loose / Multiple times', labelHindi: 'पतला / दिन में कई बार', labelMarathi: 'पातळ शौच' },
     ],
   },
   {
-    id: 'q8_bloating',
-    internalField: 'ahara_vihara',
-    question: 'Do you feel bloating or heaviness after eating?',
-    questionHindi: 'क्या खाना खाने के बाद पेट फूलना या भारीपन महसूस होता है?',
+    id: 'q8_sweat',
+    internalField: 'perspiration',
+    question: 'How much do you sweat?',
+    questionHindi: 'आपको पसीना कैसा आता है?',
+    questionMarathi: 'तुम्हाला घाम कसा येतो?',
     touchOptions: [
-      { id: 'opt_never', label: 'Never', labelHindi: 'कभी नहीं' },
-      { id: 'opt_sometimes', label: 'Sometimes', labelHindi: 'कभी-कभी' },
-      { id: 'opt_often', label: 'Often', labelHindi: 'अक्सर' },
-      { id: 'opt_almost_always', label: 'Almost Always', labelHindi: 'लगभग हमेशा' },
-    ],
-  },
-  {
-    id: 'q9_vitality',
-    internalField: 'vitality',
-    question: 'How would you describe your usual energy and activity?',
-    questionHindi: 'आप अपनी सामान्य ऊर्जा और सक्रियता को कैसे बताएंगे?',
-    touchOptions: [
-      { id: 'opt_high', label: 'High', labelHindi: 'अधिक' },
-      { id: 'opt_normal', label: 'Normal', labelHindi: 'सामान्य' },
-      { id: 'opt_low', label: 'Low', labelHindi: 'कम' },
-      { id: 'opt_very_low', label: 'Very Low', labelHindi: 'बहुत कम' },
-    ],
-  },
-  {
-    id: 'q10_routine',
-    internalField: 'dinacharya',
-    question: 'How would you describe your overall daily routine?',
-    questionHindi: 'आप अपनी रोज़ की दिनचर्या को कैसे बताएंगे?',
-    touchOptions: [
-      { id: 'opt_regular', label: 'Regular', labelHindi: 'नियमित' },
-      { id: 'opt_mostly_regular', label: 'Mostly Regular', labelHindi: 'अधिकतर नियमित' },
-      { id: 'opt_irregular', label: 'Irregular', labelHindi: 'अनियमित' },
-      { id: 'opt_very_irregular', label: 'Very Irregular', labelHindi: 'बहुत अनियमित' },
+      { id: 'normal', label: 'Normal', labelHindi: 'सामान्य', labelMarathi: 'सामान्य' },
+      { id: 'profuse', label: 'Excessive sweating', labelHindi: 'बहुत ज्यादा पसीना', labelMarathi: 'खूप जास्त घाम' },
+      { id: 'scanty', label: 'Very little / No sweat', labelHindi: 'बहुत कम / न के बराबर', labelMarathi: 'फार कमी' },
     ],
   },
 ];
+
+export class MockAyushProvider {
+  static async processAyushVoice(
+    questionId: string,
+    language: Language = 'en'
+  ): Promise<{ transcript: string; matchedOptionId: string }> {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const transcript =
+      MOCK_TRANSCRIPTS[questionId]?.[language] ||
+      MOCK_TRANSCRIPTS[questionId]?.en ||
+      'My response was recorded.';
+
+    const question = AYUSH_QUESTIONS.find((q) => q.id === questionId);
+    const matchedOptionId = question?.touchOptions[0]?.id || 'normal';
+
+    return { transcript, matchedOptionId };
+  }
+}

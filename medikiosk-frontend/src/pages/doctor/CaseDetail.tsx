@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, User, Phone, CheckCircle2, AlertCircle, 
-  FileText, Activity, Clock, PlayCircle, Pill, FileIcon, ClipboardList, Eye, FilePlus2
+  ArrowLeft, User, AlertCircle, 
+  Activity, PlayCircle, 
+  ChevronDown, ChevronUp, ShieldAlert
 } from 'lucide-react';
 import { MockDoctorCaseProvider } from '@/services/doctor/MockDoctorCaseProvider';
-import { MockAyushAssessmentProvider } from '@/services/doctor/MockAyushAssessmentProvider';
-import { MockDocumentProvider } from '@/services/doctor/MockDocumentProvider';
-import { MockClinicalReportProvider } from '@/services/doctor/MockClinicalReportProvider';
 import type { DoctorCase } from '@/services/doctor/MockDoctorCaseProvider';
 import type { PatientDocument } from '@/features/patient/PatientSessionContext';
 import { apiFetchSafe } from '@/services/api/client';
+import type { ClinicalEncounterRead } from '@/services/clinical/clinicalService';
 
 export default function CaseDetail() {
   const { caseId } = useParams();
@@ -19,6 +18,8 @@ export default function CaseDetail() {
   const [caseData, setCaseData] = useState<DoctorCase | null>(() => {
     return caseId ? (MockDoctorCaseProvider.getCaseById(caseId) || null) : null;
   });
+  const [clinicalEncounter, setClinicalEncounter] = useState<ClinicalEncounterRead | null>(null);
+  const [showConversation, setShowConversation] = useState(false);
   const [queueEntryId, setQueueEntryId] = useState<string | null>(null);
   const [tokenNumber, setTokenNumber] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +30,7 @@ export default function CaseDetail() {
     const fetchCase = async () => {
       setIsLoading(true);
       try {
+        // Fetch core encounter
         const res = await apiFetchSafe<any>(`/encounters/${caseId}`);
         if (res.ok && res.data) {
           const { encounter, patient } = res.data;
@@ -57,27 +59,34 @@ export default function CaseDetail() {
             }));
           }
 
-          setCaseData({
+          const mappedCase: DoctorCase = {
             caseId: encounter.encounter_number || encounter.id,
-            patientName: patient.full_name,
-            age: patient.age ?? '—',
-            gender: patient.gender,
-            mobile: patient.mobile,
-            chiefComplaint: encounter.chief_complaint,
+            patientName: patient?.full_name || 'Patient',
+            age: patient?.age || 0,
+            gender: (patient?.gender?.toLowerCase() || 'male') as any,
+            status: uiStatus,
+            chiefComplaint: encounter.chief_complaint || 'General medical consultation',
+            redFlagTriggered: encounter.red_flag_triggered || false,
+            submittedAt: encounter.registered_at || new Date().toISOString(),
             voiceResponses: [],
             ayushResponses: [],
             documents: realDocs,
-            redFlagTriggered: encounter.red_flag_triggered || encounter.priority === 'EMERGENCY',
-            submittedAt: encounter.registered_at,
-            status: uiStatus,
-          });
+            mobile: patient?.mobile || '',
+            abhaId: patient?.patient_uhid || '',
+          };
 
-          setQueueEntryId(res.data.queue_entry_id || encounter.id);
-          if (res.data.token_number) setTokenNumber(res.data.token_number);
-          return;
+          setCaseData(mappedCase);
+          setQueueEntryId(res.data.queue_entry_id || null);
+          setTokenNumber(res.data.token_number || null);
+        }
+
+        // Fetch Stage 6 persistent clinical intake case
+        const clinRes = await apiFetchSafe<ClinicalEncounterRead>(`/clinical/encounters/${caseId}`);
+        if (clinRes.ok && clinRes.data) {
+          setClinicalEncounter(clinRes.data);
         }
       } catch (err) {
-        console.error('Failed to fetch encounter from backend:', err);
+        console.error('Failed to load encounter or clinical case:', err);
       } finally {
         setIsLoading(false);
       }
@@ -120,19 +129,11 @@ export default function CaseDetail() {
     );
   }
 
-  // Masking helpers
-  const maskPhone = (phone?: string) => {
-    if (!phone) return '';
-    if (phone.length === 10) return `${phone.slice(0, 2)}••••${phone.slice(-4)}`;
-    return phone;
-  };
-
-  const maskAbha = (abha?: string) => {
-    if (!abha) return '';
-    const clean = abha.replace(/-/g, '');
-    if (clean.length === 14) return `XXXX XXXX ${clean.slice(-4)}`;
-    return abha;
-  };
+  const isEmergency =
+    caseData.redFlagTriggered ||
+    clinicalEncounter?.is_emergency ||
+    (clinicalEncounter?.red_flags && clinicalEncounter.red_flags.length > 0) ||
+    false;
 
   const handleStartConsultation = async () => {
     const targetId = queueEntryId || caseId;
@@ -148,25 +149,19 @@ export default function CaseDetail() {
     navigate(`/doctor/consultation/${caseId}`);
   };
 
-  const handleResumeConsultation = () => {
-    navigate(`/doctor/consultation/${caseId}`);
-  };
-
-  const handleViewSummary = () => {
-    navigate(`/doctor/case/${caseId}/summary`);
-  };
-
   const getStatusBadge = () => {
     switch (caseData.status) {
       case 'waiting': return <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm font-bold uppercase tracking-wider">WAITING</span>;
       case 'in-consultation': return <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold uppercase tracking-wider">IN CONSULTATION</span>;
       case 'completed': return <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-sm font-bold uppercase tracking-wider">COMPLETED</span>;
+      case 'closed': return <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-sm font-bold uppercase tracking-wider">CLOSED</span>;
     }
   };
 
+  const caseState = clinicalEncounter?.case_state;
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-32">
-      
       {/* Sticky Header */}
       <div className="sticky top-0 z-30 bg-[#F8FAFC] pt-2 pb-4 border-b border-slate-200 shadow-sm -mx-6 px-6 mb-6">
         <div className="flex items-center gap-4 mb-4">
@@ -194,383 +189,229 @@ export default function CaseDetail() {
               </div>
               <div className="flex items-center gap-4 text-slate-500 font-medium text-sm mt-1">
                 <span>{caseData.age} years • {caseData.gender.charAt(0).toUpperCase() + caseData.gender.slice(1)}</span>
-                {caseData.mobile && (
-                  <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {maskPhone(caseData.mobile)}</span>
-                )}
-                {caseData.abhaId && (
-                  <span>ABHA: {maskAbha(caseData.abhaId)}</span>
-                )}
+                {caseData.mobile && <span>📞 {caseData.mobile}</span>}
+                {caseData.abhaId && <span>UHID: {caseData.abhaId}</span>}
               </div>
             </div>
           </div>
-          <div>
+          <div className="flex items-center gap-3">
             {getStatusBadge()}
+            {caseData.status !== 'completed' && (
+              <button
+                type="button"
+                onClick={handleStartConsultation}
+                className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2.5 rounded-xl shadow-md transition-colors"
+              >
+                Start Consultation
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Safety Alert */}
-      {caseData.redFlagTriggered && caseData.status !== 'completed' && (
-        <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6 flex gap-4 items-start shadow-sm">
-          <div className="bg-red-100 text-red-600 rounded-full p-2 shrink-0">
-            <AlertCircle className="w-8 h-8" />
+      {/* Emergency / Red Flag Banner */}
+      {isEmergency && (
+        <div className="bg-red-50 border-2 border-red-500 rounded-3xl p-6 shadow-md flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <ShieldAlert className="w-7 h-7" />
           </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-black uppercase tracking-wider text-red-700 bg-red-200 px-2.5 py-0.5 rounded-full">
+                PRIORITY CLINICAL ALERT
+              </span>
+              <span className="text-xs font-bold text-red-600">Immediate Assessment Recommended</span>
+            </div>
+            <h2 className="text-lg font-bold text-red-900">
+              Red Flag Detected During Clinical Intake
+            </h2>
+            {clinicalEncounter?.red_flags && clinicalEncounter.red_flags.length > 0 && (
+              <ul className="mt-2 space-y-1 text-sm text-red-800">
+                {clinicalEncounter.red_flags.map((rf, idx) => (
+                  <li key={idx} className="font-semibold flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
+                    <span>[{rf.type}] {rf.source_text}</span>
+                    <span className="text-xs text-red-600">({rf.severity})</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Stage 6: Structured Clinical Case Handoff Summary */}
+      <div className="bg-white border-2 border-teal-600 rounded-3xl shadow-sm overflow-hidden">
+        <div className="bg-teal-50 px-8 py-5 border-b border-teal-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-sm">
+              <Activity className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-teal-950 uppercase tracking-wider">
+                Clinical Intake & Handoff Summary
+              </h2>
+              <p className="text-xs text-teal-700">
+                Language: {clinicalEncounter?.patient_language?.toUpperCase() || 'EN'} • Status: {clinicalEncounter?.completion_status || 'COMPLETED'}
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-teal-800 bg-teal-100 border border-teal-300 px-3 py-1 rounded-full uppercase">
+            Doctor Handoff Record
+          </span>
+        </div>
+
+        <div className="p-8 space-y-6">
+          {/* Chief Complaint */}
           <div>
-            <h3 className="text-red-800 font-black text-xl mb-1">ATTENTION REQUIRED</h3>
-            <p className="text-red-700 font-medium">Safety alert was triggered during patient intake.</p>
-            <p className="text-red-700 font-medium">Please assess the patient before proceeding.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Consultation Summary (If finalized) */}
-      {(caseData.status === 'completed' || caseData.status === 'closed') && caseData.consultation?.status === 'finalized' && (
-        <div className="bg-white border-2 border-[#0D9488] rounded-3xl p-8 shadow-sm">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-              <CheckCircle2 className="w-6 h-6 text-[#0D9488]" /> Consultation Completed
-            </h2>
-            <div className="text-sm font-bold text-slate-400">
-              Finalized: {new Date(caseData.consultation.finalizedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </div>
-          </div>
-          
-          <div className="grid md:grid-cols-2 gap-8 border-t border-slate-100 pt-6">
-            <div className="space-y-6">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Diagnosis</p>
-                <p className="font-bold text-slate-800 text-lg">{caseData.consultation.clinicalAssessment.diagnosis}</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Assessment</p>
-                <p className="font-medium text-slate-700">{caseData.consultation.clinicalAssessment.assessment}</p>
-              </div>
-              {caseData.consultation.ayushAssessment.prakriti && (
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">AYUSH Prakriti</p>
-                  <p className="font-medium text-slate-700">{caseData.consultation.ayushAssessment.prakriti}</p>
-                </div>
-              )}
-            </div>
-            
-            <div className="space-y-6">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><Pill className="w-3 h-3" /> Prescription</p>
-                {caseData.consultation.prescription.items.length > 0 ? (
-                  <ul className="space-y-2 mt-2">
-                    {caseData.consultation.prescription.items.map(item => (
-                      <li key={item.id} className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                        <p className="font-bold text-slate-800 text-sm">{item.medicineName}</p>
-                        <p className="text-xs text-slate-500">{item.dosage} • {item.frequency} • {item.duration}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-slate-500 italic text-sm mt-2">No medicines prescribed.</p>
-                )}
-              </div>
-              {caseData.consultation.followUp.required && (
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Follow-up</p>
-                  <p className="font-medium text-slate-700">{caseData.consultation.followUp.timeframe}</p>
-                  {caseData.consultation.followUp.instructions && (
-                    <p className="text-sm text-slate-500 mt-1">{caseData.consultation.followUp.instructions}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="grid md:grid-cols-3 gap-6">
-        
-        {/* Left Column (Main Content) */}
-        <div className="md:col-span-2 space-y-6">
-          
-          {/* Today's Concern */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
-            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-              <Activity className="w-4 h-4" /> Today's Concern
-            </h2>
-            <p className="text-xl font-bold text-slate-800">
-              {caseData.chiefComplaint || 'No information provided'}
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Chief Complaint</span>
+            <p className="text-xl font-black text-slate-800 mt-0.5">
+              {clinicalEncounter?.chief_complaint || caseData.chiefComplaint || 'Not reported'}
             </p>
           </div>
 
-          {/* Voice Case Taking */}
-          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-8 py-4 border-b border-slate-200">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <PlayCircle className="w-4 h-4" /> What the Patient Told Us
-              </h2>
-            </div>
-            <div className="p-8 space-y-6">
-              {caseData.voiceResponses && caseData.voiceResponses.length > 0 ? (
-                caseData.voiceResponses.map((vr, idx) => (
-                  <div key={idx} className="border-b border-slate-100 last:border-0 pb-6 last:pb-0">
-                    <p className="font-bold text-slate-700 mb-1">{vr.question}</p>
-                    {vr.questionHindi && <p className="text-sm text-slate-500 mb-3">{vr.questionHindi}</p>}
-                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                      <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Patient said:</p>
-                      <p className="font-bold text-primary text-lg">"{vr.transcript || vr.selectedOption}"</p>
+          {/* History of Presenting Complaint */}
+          <div className="border-t border-slate-100 pt-5">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 block">
+              History of Presenting Complaint (HPI)
+            </span>
+            {caseState?.symptoms && caseState.symptoms.length > 0 ? (
+              <div className="grid sm:grid-cols-2 gap-4">
+                {caseState.symptoms.map((s, idx) => (
+                  <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <p className="font-bold text-slate-800 text-base capitalize">{s.name}</p>
+                    <div className="text-xs text-slate-600 mt-2 space-y-1">
+                      <p><span className="text-slate-400 font-medium">Location:</span> <span className="font-semibold text-slate-700">{s.location || 'Not reported'}</span></p>
+                      <p><span className="text-slate-400 font-medium">Duration:</span> <span className="font-semibold text-slate-700">{s.duration || 'Not reported'}</span></p>
+                      <p><span className="text-slate-400 font-medium">Severity:</span> <span className="font-semibold text-slate-700">{s.severity || 'Not reported'}</span></p>
+                      <p><span className="text-slate-400 font-medium">Character:</span> <span className="font-semibold text-slate-700">{s.character || 'Not reported'}</span></p>
+                      {s.aggravating_factors && s.aggravating_factors.length > 0 && (
+                        <p><span className="text-slate-400 font-medium">Aggravating:</span> <span className="font-semibold text-slate-700">{s.aggravating_factors.join(', ')}</span></p>
+                      )}
+                      {s.relieving_factors && s.relieving_factors.length > 0 && (
+                        <p><span className="text-slate-400 font-medium">Relieving:</span> <span className="font-semibold text-slate-700">{s.relieving_factors.join(', ')}</span></p>
+                      )}
                     </div>
                   </div>
-                ))
-              ) : (
-                <p className="text-slate-500 italic">No voice responses recorded.</p>
-              )}
-            </div>
-          </div>
-
-          {/* AYUSH Assessment */}
-          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-8 py-4 border-b border-slate-200">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" /> AYUSH Health Assessment
-              </h2>
-            </div>
-            <div className="p-8">
-              {caseData.ayushResponses && caseData.ayushResponses.length > 0 ? (
-                <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">
-                  {caseData.ayushResponses.map((ar, idx) => (
-                    <div key={idx}>
-                      <p className="font-bold text-slate-500 mb-1">{ar.question}</p>
-                      <p className="font-bold text-slate-800 text-lg">{ar.answer}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-slate-500 italic">No AYUSH responses recorded.</p>
-              )}
-            </div>
-          </div>
-
-        </div>
-
-        {/* Right Column (Sidebar) */}
-        <div className="space-y-6">
-          
-          {/* Clinical History */}
-          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <Pill className="w-4 h-4" /> Clinical History
-              </h2>
-            </div>
-            
-            {/* Medications */}
-            <div className="p-6 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 mb-3">Current Medicines</h3>
-              {caseData.medicationHistory ? (
-                <>
-                  <p className="text-slate-600 font-medium mb-2">
-                    {(caseData.medicationHistory.takingMedicines === 'yes_daily' || caseData.medicationHistory.takingMedicines === 'yes_sometimes') ? 'Taking medicines' : 
-                     caseData.medicationHistory.takingMedicines === 'no' ? 'Not taking medicines' : 'Not sure'}
-                  </p>
-                  {caseData.medicationHistory.medicines && (
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Medicines reported:</p>
-                      <p className="font-medium text-slate-700">{caseData.medicationHistory.medicines}</p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-slate-500 italic">No medicines reported.</p>
-              )}
-            </div>
-
-            {/* Allergies */}
-            <div className="p-6">
-              <h3 className="font-bold text-slate-800 mb-3">Allergies</h3>
-              {caseData.allergyHistory ? (
-                <>
-                  <p className="text-slate-600 font-medium mb-2">
-                    {caseData.allergyHistory.hasAllergy === 'yes' ? 'Has allergies' : 
-                     caseData.allergyHistory.hasAllergy === 'no' ? 'No allergies reported' : 'Not sure'}
-                  </p>
-                  {caseData.allergyHistory.hasAllergy === 'yes' && (
-                    <div className="space-y-3 mt-3">
-                      <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Allergy type:</p>
-                        <p className="font-medium text-slate-700">{caseData.allergyHistory.allergyType || 'Not answered'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Reaction:</p>
-                        <p className="font-medium text-slate-700">
-                          {caseData.allergyHistory.reaction?.replace(/_/g, ' ') || 'Not answered'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-slate-500 italic">No allergies reported.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Documents */}
-          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <FileText className="w-4 h-4" /> Documents
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              {(() => {
-                const docs = (caseData.documents && caseData.documents.length > 0)
-                  ? caseData.documents
-                  : MockDocumentProvider.getDocumentsByCase(caseId!);
-                if (docs.length === 0) return <p className="text-slate-500 italic">No documents attached.</p>;
-                return docs.map((doc, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shrink-0 border border-slate-200">
-                        <FileIcon className="w-5 h-5 text-slate-400" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-slate-700 truncate">{(doc as any).documentType || (doc as any).title || (doc as any).fileName || 'Document'}</p>
-                        <p className="text-xs text-slate-500 truncate">{doc.fileName || doc.id}</p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={async () => {
-                        if (doc.id) {
-                          const urlRes = await apiFetchSafe<any>(`/documents/${doc.id}/url`);
-                          if (urlRes.ok && urlRes.data?.url) {
-                            window.open(urlRes.data.url, '_blank', 'noopener,noreferrer');
-                            return;
-                          }
-                        }
-                        navigate(`/doctor/documents/${doc.id}`);
-                      }}
-                      className="text-primary font-bold text-sm bg-primary/10 px-4 py-2 rounded-lg hover:bg-primary/20 transition-colors whitespace-nowrap ml-2 flex items-center gap-2"
-                    >
-                      <Eye className="w-4 h-4" /> View
-                    </button>
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-
-          {/* Clinical Reports */}
-          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <ClipboardList className="w-4 h-4" /> Clinical Reports
-              </h2>
-              <button 
-                onClick={() => navigate('/doctor/reports')}
-                className="text-teal-600 hover:text-teal-700 text-sm font-bold flex items-center gap-1"
-              >
-                <FilePlus2 className="w-4 h-4" /> Generate Report
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              {(() => {
-                const reports = MockClinicalReportProvider.getReportsByCaseId(caseId!);
-                if (reports.length === 0) return <p className="text-slate-500 italic">No reports available.</p>;
-                return reports.map((report) => (
-                  <div key={report.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shrink-0 border border-slate-200 text-teal-600">
-                        <ClipboardList className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-slate-700 truncate">{report.title}</p>
-                        <p className="text-xs text-slate-500 truncate">
-                          {report.status.toUpperCase()} • {new Date(report.generatedAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => navigate(`/doctor/reports/${report.id}`)}
-                      className="text-primary font-bold text-sm bg-primary/10 px-4 py-2 rounded-lg hover:bg-primary/20 transition-colors whitespace-nowrap ml-2 flex items-center gap-2"
-                    >
-                      <Eye className="w-4 h-4" /> View
-                    </button>
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-
-          {/* Timeline */}
-          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <Clock className="w-4 h-4" /> Case Timeline
-              </h2>
-            </div>
-            <div className="p-6">
-              <div className="space-y-4">
-                <div className="flex gap-4">
-                  <div className="text-xs font-bold text-slate-400 w-16 pt-1">
-                    {new Date(caseData.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                  <div className="border-l-2 border-slate-200 pl-4 relative">
-                    <div className="absolute w-2 h-2 bg-slate-300 rounded-full -left-[5px] top-1.5"></div>
-                    <p className="font-medium text-slate-700">Case submitted to OPD</p>
-                  </div>
-                </div>
+                ))}
               </div>
+            ) : (
+              <p className="text-sm text-slate-500 italic">No detailed symptom attributes captured.</p>
+            )}
+          </div>
+
+          {/* Associated Symptoms & Background */}
+          <div className="grid sm:grid-cols-3 gap-4 border-t border-slate-100 pt-5">
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                Associated Symptoms
+              </span>
+              <p className="text-sm font-semibold text-slate-800">
+                {caseState?.associated_symptoms?.length ? caseState.associated_symptoms.join(', ') : 'None reported'}
+              </p>
+              {caseState?.fever !== undefined && caseState?.fever !== null && (
+                <p className="text-xs text-slate-500 mt-1">Fever: {caseState.fever ? 'Present' : 'Absent'}</p>
+              )}
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                Medications & Allergies
+              </span>
+              <p className="text-xs text-slate-700">
+                <span className="font-bold">Meds:</span> {caseState?.medications?.length ? caseState.medications.join(', ') : 'Not reported'}
+              </p>
+              <p className="text-xs text-slate-700 mt-1">
+                <span className="font-bold">Allergies:</span> {caseState?.allergies?.length ? caseState.allergies.join(', ') : 'No known allergies'}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                Medical & Family History
+              </span>
+              <p className="text-xs text-slate-700">
+                <span className="font-bold">Past:</span> {caseState?.medical_history?.length ? caseState.medical_history.join(', ') : 'Not reported'}
+              </p>
+              <p className="text-xs text-slate-700 mt-1">
+                <span className="font-bold">Family:</span> {caseState?.family_history?.length ? caseState.family_history.join(', ') : 'Not reported'}
+              </p>
             </div>
           </div>
 
+          {/* Formatted Full Text Summary (Collapsible/Verbatim) */}
+          {clinicalEncounter?.final_summary && (
+            <div className="border-t border-slate-100 pt-5">
+              <details className="group">
+                <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-teal-700 flex items-center justify-between">
+                  <span>View Formatted Doctor Summary Text</span>
+                  <span className="text-teal-600 group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <pre className="mt-3 p-4 bg-slate-900 text-slate-100 rounded-2xl text-xs font-mono whitespace-pre-wrap leading-relaxed overflow-x-auto">
+                  {clinicalEncounter.final_summary}
+                </pre>
+              </details>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Fixed Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 px-8 z-40 flex justify-end gap-4 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
-        {caseData.status === 'waiting' && (
-          <button 
-            onClick={handleStartConsultation}
-            className="bg-[#0D9488] text-white px-10 py-3 rounded-2xl font-bold text-lg hover:bg-[#0B8070] shadow-md transition-colors flex items-center gap-2"
-          >
-            Start Consultation
-          </button>
-        )}
-        
-        {caseData.status === 'in-consultation' && (
-          <button 
-            onClick={handleResumeConsultation}
-            className="bg-slate-800 text-white px-10 py-3 rounded-2xl font-bold text-lg hover:bg-slate-700 shadow-md transition-colors flex items-center gap-2"
-          >
-            Resume Consultation
-          </button>
-        )}
+      {/* Expandable Conversational Turn History */}
+      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+        <button
+          type="button"
+          onClick={() => setShowConversation(!showConversation)}
+          className="w-full bg-slate-50 px-8 py-5 border-b border-slate-200 flex items-center justify-between text-left hover:bg-slate-100 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <PlayCircle className="w-5 h-5 text-primary" />
+            <div>
+              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+                Full Conversation History ({clinicalEncounter?.turns?.length || caseData.voiceResponses?.length || 0} Turns)
+              </h2>
+              <p className="text-xs text-slate-500">Original patient voice responses and transcripts</p>
+            </div>
+          </div>
+          {showConversation ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+        </button>
 
-        {(caseData.status === 'completed' || caseData.status === 'closed') && (
-          <button 
-            onClick={handleViewSummary}
-            className="bg-[#0D9488] text-white px-10 py-3 rounded-2xl font-bold text-lg hover:bg-[#0B8070] shadow-md transition-colors flex items-center gap-2"
-          >
-            View Final Summary
-          </button>
+        {showConversation && (
+          <div className="p-8 space-y-6">
+            {clinicalEncounter?.turns && clinicalEncounter.turns.length > 0 ? (
+              clinicalEncounter.turns.map((turn, idx) => (
+                <div key={turn.id || idx} className="border-b border-slate-100 last:border-0 pb-6 last:pb-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-md uppercase tracking-wider">
+                      Turn {turn.turn_number} • {turn.question_type}
+                    </span>
+                    <span className="text-xs text-slate-400 font-mono">
+                      {turn.language.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="font-bold text-slate-800 text-sm mb-2">{turn.question}</p>
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                      Patient Response:
+                    </span>
+                    <p className="font-semibold text-primary text-base">"{turn.patient_transcript}"</p>
+                  </div>
+                </div>
+              ))
+            ) : caseData.voiceResponses && caseData.voiceResponses.length > 0 ? (
+              caseData.voiceResponses.map((vr, idx) => (
+                <div key={idx} className="border-b border-slate-100 last:border-0 pb-6 last:pb-0">
+                  <p className="font-bold text-slate-700 mb-1">{vr.question}</p>
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                    <p className="font-bold text-primary text-base">"{vr.transcript || vr.selectedOption}"</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-slate-500 text-sm italic">No conversational records available.</p>
+            )}
+          </div>
         )}
-
-        {(() => {
-          const ayushData = MockAyushAssessmentProvider.getAssessmentByCaseId(caseId!);
-          if (!ayushData) return null;
-          
-          return (
-            <button 
-              onClick={() => navigate(`/doctor/ayush/${caseId}`)}
-              className="bg-white border-2 border-[#0D9488] text-[#0D9488] px-8 py-3 rounded-2xl font-bold text-lg hover:bg-[#0D9488]/5 shadow-sm transition-colors flex items-center gap-2"
-            >
-              <Activity className="w-5 h-5" />
-              {ayushData.ayushStatus === 'pending' ? 'Start AYUSH' : 
-               (ayushData.ayushStatus === 'in-progress' || ayushData.ayushStatus === 'draft') ? 'Resume AYUSH' : 
-               'View AYUSH'}
-            </button>
-          );
-        })()}
       </div>
-
-      {/* Document Preview Modal Removed */}
-
     </div>
   );
 }

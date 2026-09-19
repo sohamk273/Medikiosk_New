@@ -1,11 +1,17 @@
-"""Encounter Pydantic schemas."""
+"""Encounter Pydantic schemas including complete lifecycle record."""
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.encounter import EncounterStatus, EncounterPriority
 from app.models.queue import QueueStatus
+from app.schemas.consent import ConsentRead
+from app.schemas.consultation import ConsultationRead
+from app.schemas.document import DocumentRead
+from app.schemas.clinical import ClinicalEncounterRead
+from app.schemas.ayush import AYUSHAssessmentRead
+from app.schemas.audit import AuditEventRead
 
 
 class EncounterBase(BaseModel):
@@ -45,9 +51,10 @@ class EncounterPatientSummary(BaseModel):
     age: Optional[int] = None
     gender: str
     mobile: Optional[str] = None
-
-
-from app.schemas.consultation import ConsultationRead
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
 
 
 class EncounterDetailResponse(BaseModel):
@@ -70,3 +77,20 @@ class EncounterSubmitResponse(BaseModel):
     token_number: int
     queue_status: QueueStatus
     submitted_at: datetime
+
+
+class EncounterLifecycleResponse(BaseModel):
+    """Aggregated full lifecycle clinical record for Doctor EMR & persistence audit."""
+    encounter: EncounterRead
+    patient: EncounterPatientSummary
+    consent: Optional[ConsentRead] = None
+    queue_entry_id: Optional[uuid.UUID] = None
+    token_number: Optional[int] = None
+    queue_status: Optional[QueueStatus] = None
+    clinical_case: Optional[ClinicalEncounterRead] = None
+    ayush_assessment: Optional[AYUSHAssessmentRead] = None
+    documents: List[DocumentRead] = Field(default_factory=list)
+    consultation: Optional[ConsultationRead] = None
+    audit_trail: List[AuditEventRead] = Field(default_factory=list)
+    is_emergency: bool = False
+    lifecycle_status: str = "ACTIVE"

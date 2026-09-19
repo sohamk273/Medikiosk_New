@@ -1,23 +1,38 @@
-"""Encounter and clinical visit API endpoints."""
+"""Encounter API endpoints for kiosk check-in, visit management, and complete lifecycle."""
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.consent import ConsentCreate, ConsentRead
-from app.schemas.consultation import ConsultationCreate, ConsultationRead
-from app.schemas.document import DocumentRead
 from app.schemas.encounter import (
     EncounterCreate,
     EncounterRead,
     EncounterUpdate,
     EncounterDetailResponse,
     EncounterSubmitResponse,
+    EncounterLifecycleResponse,
 )
+from app.schemas.consent import ConsentCreate, ConsentRead
+from app.schemas.consultation import ConsultationCreate, ConsultationRead
+from app.schemas.document import DocumentRead
+from app.schemas.ayush import (
+    AYUSHIntakeCreate,
+    AYUSHDoctorAssessmentUpdate,
+    AYUSHAssessmentRead,
+)
+from app.schemas.audit import AuditEventRead
 from app.services.auth.auth_service import require_role
+from app.services.encounter.encounter_service import (
+    create_encounter,
+    update_encounter,
+    complete_encounter,
+    get_encounter_detail,
+    get_encounter_full_lifecycle,
+)
 from app.services.consent.consent_service import record_consent
+from app.services.queue.queue_service import submit_encounter_to_queue
 from app.services.consultation.consultation_service import (
     get_consultation_by_encounter,
     save_consultation_draft,
@@ -27,18 +42,17 @@ from app.services.document.document_service import (
     upload_document,
     list_documents_by_encounter,
 )
-from app.services.encounter.encounter_service import (
-    create_encounter,
-    update_encounter,
-    complete_encounter,
-    get_encounter_detail,
+from app.services.ayush.ayush_service import (
+    save_ayush_intake,
+    get_ayush_assessment,
+    update_doctor_ayush_assessment,
 )
-from app.services.queue.queue_service import submit_encounter_to_queue
+from app.services.audit.audit_service import get_encounter_audit_trail
 from app.services.storage import StorageService, get_storage_service
 
 router = APIRouter(prefix="/encounters", tags=["Encounters"])
 
-# Authorized clinical staff roles
+# Authorized doctor roles
 DOCTOR_ROLES = [UserRole.DOCTOR, UserRole.AYUSH_DOCTOR, UserRole.HOSPITAL_ADMIN]
 
 
@@ -46,14 +60,16 @@ DOCTOR_ROLES = [UserRole.DOCTOR, UserRole.AYUSH_DOCTOR, UserRole.HOSPITAL_ADMIN]
     "",
     response_model=EncounterRead,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new clinical encounter/visit",
+    summary="Create a new clinical visit (Encounter)",
 )
-async def create_new_encounter(
+async def start_encounter(
     encounter_in: EncounterCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> EncounterRead:
-    """Creates a new visit record for an existing patient with status WAITING."""
-    encounter = await create_encounter(db, encounter_in)
+    """Creates an encounter for an existing patient to initiate the kiosk intake journey."""
+    ip_addr = request.client.host if request.client else None
+    encounter = await create_encounter(db, encounter_in, ip_address=ip_addr)
     return EncounterRead.model_validate(encounter)
 
 
@@ -70,6 +86,33 @@ async def get_encounter(
     return await get_encounter_detail(db, encounter_id)
 
 
+@router.get(
+    "/{encounter_id}/lifecycle",
+    response_model=EncounterLifecycleResponse,
+    summary="Retrieve complete persistent clinical record lifecycle",
+)
+async def get_encounter_lifecycle(
+    encounter_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> EncounterLifecycleResponse:
+    """Aggregates the complete verified clinical record lifecycle (Demographics, Consent, Intake, AYUSH, Docs, Queue, Consultation, Audit)."""
+    return await get_encounter_full_lifecycle(db, encounter_id)
+
+
+@router.get(
+    "/{encounter_id}/audit-trail",
+    response_model=List[AuditEventRead],
+    summary="Get full audit timeline for encounter",
+)
+async def get_audit_trail(
+    encounter_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> List[AuditEventRead]:
+    """Retrieves all chronological audit events linked to the encounter."""
+    events = await get_encounter_audit_trail(db, encounter_id)
+    return [AuditEventRead.model_validate(ev) for ev in events]
+
+
 @router.patch(
     "/{encounter_id}",
     response_model=EncounterRead,
@@ -78,10 +121,12 @@ async def get_encounter(
 async def patch_encounter(
     encounter_id: uuid.UUID,
     update_in: EncounterUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> EncounterRead:
     """Updates registration fields like chief complaint, red flag status, or priority."""
-    encounter = await update_encounter(db, encounter_id, update_in)
+    ip_addr = request.client.host if request.client else None
+    encounter = await update_encounter(db, encounter_id, update_in, ip_address=ip_addr)
     return EncounterRead.model_validate(encounter)
 
 
@@ -101,6 +146,60 @@ async def submit_consent(
     ip_addr = request.client.host if request.client else None
     consent = await record_consent(db, encounter_id, consent_in, ip_address=ip_addr)
     return ConsentRead.model_validate(consent)
+
+
+@router.post(
+    "/{encounter_id}/ayush",
+    response_model=AYUSHAssessmentRead,
+    status_code=status.HTTP_200_OK,
+    summary="Save patient AYUSH intake responses and Prakriti profile",
+)
+async def save_ayush(
+    encounter_id: uuid.UUID,
+    ayush_in: AYUSHIntakeCreate,
+    db: AsyncSession = Depends(get_db),
+) -> AYUSHAssessmentRead:
+    """Computes and persists patient Prakriti dosha distribution from kiosk questionnaire."""
+    record = await save_ayush_intake(db, encounter_id, ayush_in)
+    return AYUSHAssessmentRead.model_validate(record)
+
+
+@router.get(
+    "/{encounter_id}/ayush",
+    response_model=Optional[AYUSHAssessmentRead],
+    summary="Get AYUSH assessment for encounter",
+)
+async def get_ayush(
+    encounter_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> Optional[AYUSHAssessmentRead]:
+    """Retrieves patient AYUSH intake & doctor findings for an encounter."""
+    record = await get_ayush_assessment(db, encounter_id)
+    if not record:
+        return None
+    return AYUSHAssessmentRead.model_validate(record)
+
+
+@router.patch(
+    "/{encounter_id}/ayush/doctor-assessment",
+    response_model=AYUSHAssessmentRead,
+    summary="Save doctor Ayurvedic clinical findings",
+    dependencies=[Depends(require_role(DOCTOR_ROLES))],
+)
+async def patch_doctor_ayush(
+    encounter_id: uuid.UUID,
+    doc_in: AYUSHDoctorAssessmentUpdate,
+    current_user: User = Depends(require_role(DOCTOR_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> AYUSHAssessmentRead:
+    """Allows doctor to record Prakriti, Vikriti, Agni, Koshtha, and Ayurvedic formulations."""
+    record = await update_doctor_ayush_assessment(
+        db=db,
+        encounter_id=encounter_id,
+        doctor_data=doc_in,
+        doctor_id=current_user.id,
+    )
+    return AYUSHAssessmentRead.model_validate(record)
 
 
 @router.post(

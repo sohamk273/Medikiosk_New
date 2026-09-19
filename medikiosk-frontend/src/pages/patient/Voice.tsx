@@ -1,398 +1,429 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Square } from 'lucide-react';
+import {
+  Mic,
+  MicOff,
+  RotateCcw,
+  Volume2,
+  AlertCircle,
+  Sparkles,
+  Check,
+  ChevronRight,
+} from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import { VOICE_QUESTIONS } from '@/services/voice/MockVoiceProvider';
-import { VoiceOrb } from '@/components/kiosk/VoiceOrb';
-import { VoiceWaveform } from '@/components/kiosk/VoiceWaveform';
-import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
 import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
+import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
+import { useAudioRecorder } from '@/services/voice/useAudioRecorder';
+import { VOICE_QUESTIONS } from '@/services/voice/MockVoiceProvider';
+import type { TouchOption } from '@/services/voice/MockVoiceProvider';
+import { useTranslation } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
 
-type VoicePageState = 'idle' | 'listening';
-
-// Global base step offset within the 24-step kiosk flow
-const VOICE_STEP_BASE = 9; // Step 9 of 24 onward
+const INITIAL_QUESTION = {
+  id: 'q1_chief_complaint',
+  question: 'What brings you to the clinic today? Please describe your symptoms.',
+  questionHindi: 'आज आप अस्पताल किस तकलीफ़ के लिए आए हैं? कृपया अपने लक्षण बताएं।',
+  questionMarathi: 'आज आपण दवाखान्यात कोणत्या त्रासासाठी आला आहात? कृपया आपली लक्षणे सांगा.',
+  audioPromptEnglish: 'Please describe what health issues you are experiencing today.',
+  audioPromptHindi: 'कृपया बताएं कि आपको आज क्या तकलीफ़ या समस्या हो रही है।',
+  audioPromptMarathi: 'कृपया सांगा की आपल्याला आज काय त्रास किंवा समस्या होत आहे.',
+  touchOptions: [
+    { id: 'fever', label: 'Fever / High Temperature', labelHindi: 'बुखार / तेज ताप', labelMarathi: 'ताप / अंग गरम', isRedFlag: false },
+    { id: 'stomach_pain', label: 'Stomach / Abdominal Pain', labelHindi: 'पेट दर्द / मरोड़', labelMarathi: 'पोटदुखी / पोटात दुखणे', isRedFlag: false },
+    { id: 'chest_pain', label: 'Chest Pain / Tightness', labelHindi: 'सीने में दर्द / भारीपन', labelMarathi: 'छातीत दुखणे / कळ', isRedFlag: true },
+    { id: 'headache', label: 'Severe Headache / Dizziness', labelHindi: 'सिर दर्द / चक्कर', labelMarathi: 'डोकेदुखी / चक्कर', isRedFlag: false },
+    { id: 'cough', label: 'Cough / Cold / Throat Pain', labelHindi: 'खांसी / जुकाम / गला दर्द', labelMarathi: 'खोकला / सर्दी / घसा दुखणे', isRedFlag: false },
+    { id: 'vomiting', label: 'Vomiting / Loose Motion', labelHindi: 'उल्टी / दस्त', labelMarathi: 'उलटी / जुलाब', isRedFlag: false },
+  ],
+};
 
 export default function Voice() {
   const navigate = useNavigate();
   const {
     language,
     voiceIntake,
+    lastClinicalTurn,
+    currentConversationTurn,
     setActiveVoiceInput,
+    setActiveTranscript,
     setActiveSelectedOption,
-    resetActiveVoiceResponse,
   } = usePatientSession();
+  const { t } = useTranslation();
 
-  const [pageState, setPageState] = useState<VoicePageState>('idle');
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [selectedTouchOption, setSelectedTouchOption] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const {
+    state: recordState,
+    duration,
+    error: recordError,
+    startRecording,
+    stopRecording,
+    resetRecording,
+  } = useAudioRecorder();
 
-  const currentIndex = voiceIntake.currentQuestionIndex;
-  const question = VOICE_QUESTIONS[currentIndex];
-  const TOTAL_QUESTIONS = VOICE_QUESTIONS.length;
-  const globalStep = VOICE_STEP_BASE + currentIndex;
+  const isRecording = recordState === 'recording';
+  const isRequesting = recordState === 'requesting_permission';
 
-  // Clear any running timer on unmount
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
+  const [selectedTouchOption, setSelectedTouchOption] = useState<TouchOption | null>(null);
+  const [isStopping, setIsStopping] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const stopRequestedRef = useRef(false);
 
-  if (!question) {
-    // Safety fallback — should not normally occur
-    return (
-      <div className="w-full max-w-7xl mx-auto pt-12 px-4 text-center">
-        <p className="text-xl text-slate-500">Voice intake complete.</p>
-      </div>
-    );
-  }
+  // Dynamic clinical question selection from Stage 4/5 orchestrator
+  const turnNumber = currentConversationTurn || 1;
+  const hasPriorTurn = lastClinicalTurn !== null && turnNumber > 1;
 
-  // ─── Question text according to selected language ─────────────────────────
-  const questionPrimary =
-    language === 'hi' ? question.questionHindi :
-    language === 'mr' ? question.questionMarathi :
-    question.question;
-  const questionSecondary =
-    language === 'hi' ? question.question :
-    language === 'mr' ? question.question :
-    question.questionHindi;
+  const currentQuestionText = hasPriorTurn
+    ? (language === 'hi' || language === 'mr'
+        ? (lastClinicalTurn.next_question_regional || lastClinicalTurn.next_question)
+        : lastClinicalTurn.next_question)
+    : (language === 'hi'
+        ? INITIAL_QUESTION.questionHindi
+        : language === 'mr'
+        ? INITIAL_QUESTION.questionMarathi
+        : INITIAL_QUESTION.question);
 
-  // ─── Timer logic ──────────────────────────────────────────────────────────
-  const startTimer = () => {
-    setTimerSeconds(0);
-    timerRef.current = setInterval(() => {
-      setTimerSeconds(s => s + 1);
-    }, 1000);
+  const currentQuestionHindi = hasPriorTurn
+    ? (lastClinicalTurn.next_question_regional || lastClinicalTurn.next_question)
+    : INITIAL_QUESTION.questionHindi;
+
+  const currentQuestionMarathi = hasPriorTurn
+    ? (lastClinicalTurn.next_question_regional || lastClinicalTurn.next_question)
+    : INITIAL_QUESTION.questionMarathi;
+
+  const currentQuestionEnglish = hasPriorTurn
+    ? lastClinicalTurn.next_question
+    : INITIAL_QUESTION.question;
+
+  const currentQuestionId = hasPriorTurn
+    ? `q_${lastClinicalTurn.next_question_type.toLowerCase()}`
+    : INITIAL_QUESTION.id;
+
+  // Touch options fallback
+  const fallbackIndex = Math.min(voiceIntake.currentQuestionIndex, VOICE_QUESTIONS.length - 1);
+  const touchOptions = hasPriorTurn
+    ? (VOICE_QUESTIONS[fallbackIndex]?.touchOptions || INITIAL_QUESTION.touchOptions)
+    : INITIAL_QUESTION.touchOptions;
+
+  const handleStartListening = async () => {
+    setSelectedTouchOption(null);
+    stopRequestedRef.current = false;
+    setIsStopping(false);
+    setIsTransitioning(false);
+    await startRecording();
   };
 
-  const stopTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+  const handleStopListening = async () => {
+    if (stopRequestedRef.current || isStopping || isTransitioning) return;
+    stopRequestedRef.current = true;
+    setIsStopping(true);
+
+    try {
+      const audioBlob = await stopRecording();
+      if (audioBlob && audioBlob.size > 0) {
+        setIsTransitioning(true);
+        navigate('/patient/voice/processing', {
+          state: {
+            questionId: currentQuestionId,
+            questionIndex: turnNumber - 1,
+            method: 'voice',
+            audioBlob,
+            questionPrompt: currentQuestionText,
+          },
+        });
+      } else {
+        // Fallback transition
+        setIsTransitioning(true);
+        navigate('/patient/voice/processing', {
+          state: {
+            questionId: currentQuestionId,
+            questionIndex: turnNumber - 1,
+            method: 'voice',
+            questionPrompt: currentQuestionText,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('Microphone stop error:', err);
+      setIsTransitioning(true);
+      navigate('/patient/voice/processing', {
+        state: {
+          questionId: currentQuestionId,
+          questionIndex: turnNumber - 1,
+          method: 'voice',
+          questionPrompt: currentQuestionText,
+        },
+      });
+    } finally {
+      setIsStopping(false);
     }
   };
 
-  const formatTimer = (s: number) => {
-    const mins = Math.floor(s / 60).toString().padStart(2, '0');
-    const secs = (s % 60).toString().padStart(2, '0');
-    return `${mins}:${secs}`;
-  };
-
-  // ─── Interaction handlers ─────────────────────────────────────────────────
-  const handleStartListening = () => {
-    setSelectedTouchOption(null);
-    setActiveVoiceInput('voice');
-    setPageState('listening');
-    startTimer();
-  };
-
-  const handleStopListening = () => {
-    stopTimer();
-    setPageState('idle');
-    // Navigate to processing — context already has activeInputMethod = 'voice'
-    navigate('/patient/voice-processing');
-  };
-
-  const handleTouchSelect = (optionId: string) => {
-    // If already listening, ignore touch
-    if (pageState === 'listening') return;
-    setSelectedTouchOption(optionId);
+  const handleTouchSelect = (option: TouchOption) => {
+    if (isRecording) {
+      resetRecording();
+    }
+    setSelectedTouchOption(option);
   };
 
   const handleTouchContinue = () => {
     if (!selectedTouchOption) return;
-    const option = question.touchOptions.find(o => o.id === selectedTouchOption);
-    if (!option) return;
 
-    const label =
-      language === 'hi' ? option.labelHindi :
-      language === 'mr' ? option.labelMarathi :
-      option.label;
+    const chosenText =
+      language === 'hi'
+        ? selectedTouchOption.labelHindi
+        : language === 'mr'
+        ? selectedTouchOption.labelMarathi
+        : selectedTouchOption.label;
 
     setActiveVoiceInput('touch');
-    setActiveSelectedOption(label, option.isRedFlag);
-    navigate('/patient/voice-confirmation');
+    setActiveTranscript(chosenText, selectedTouchOption.isRedFlag);
+    setActiveSelectedOption(selectedTouchOption.id, selectedTouchOption.isRedFlag);
+
+    navigate('/patient/voice/processing', {
+      state: {
+        questionId: currentQuestionId,
+        questionIndex: turnNumber - 1,
+        method: 'touch',
+        touchText: chosenText,
+        touchOptionId: selectedTouchOption.id,
+        isRedFlag: selectedTouchOption.isRedFlag,
+        questionPrompt: currentQuestionText,
+      },
+    });
   };
 
-  const handleBack = () => {
-    if (pageState === 'listening') {
-      stopTimer();
-      setPageState('idle');
-      resetActiveVoiceResponse();
-      return;
-    }
-    navigate('/patient/chief-complaint');
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ─── Touch option label helper ────────────────────────────────────────────
-  const getOptionLabel = (option: typeof question.touchOptions[0]) =>
-    language === 'hi' ? `${option.labelHindi}` :
-    language === 'mr' ? `${option.labelMarathi}` :
-    option.label;
+  const globalStep = 10;
 
-  const getOptionSubLabel = (option: typeof question.touchOptions[0]) =>
-    language === 'hi' ? option.label :
-    language === 'mr' ? option.label :
-    option.labelHindi;
+  useKioskScreen({
+    onBack: () => navigate('/patient/chief-complaint'),
+    audioPrompt:
+      language === 'hi'
+        ? currentQuestionHindi
+        : language === 'mr'
+        ? currentQuestionMarathi
+        : currentQuestionEnglish,
+  });
 
   return (
     <div className="w-full">
-      {/* Step progress bar */}
       <StepProgressIndicator
         current={globalStep}
         total={24}
-        title={language === 'hi' ? 'आवाज़ से बातचीत' : language === 'mr' ? 'आवाज बातचीत' : 'VOICE INTAKE'}
-        badge={
-          pageState === 'listening'
-            ? '● MIC LIVE / माइक चालू'
-            : `Question ${currentIndex + 1} of ${TOTAL_QUESTIONS}`
-        }
+        title={t('voice.title')}
+        badge={`Question ${turnNumber} of assessment`}
       />
 
-      <div className="max-w-7xl mx-auto px-6 pt-6 pb-32">
-        {/* Question header */}
-        <div className="mb-4 bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center shrink-0">
-            <span className="text-white text-2xl">🎧</span>
+      <div className="max-w-7xl mx-auto px-6 pt-4 pb-32">
+        {/* Dynamic Question Header Banner */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mb-6 flex items-start gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#064E3B] text-white flex items-center justify-center flex-shrink-0 shadow-md">
+            <span className="text-xl font-bold">Q{turnNumber}</span>
           </div>
           <div className="flex-1">
-            <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1">
-              {language === 'hi' ? 'मुख्य लक्षण विवरण' : language === 'mr' ? 'मुख्य लक्षण' : 'PRIMARY SYMPTOM INTAKE'}
-            </p>
-            <h2 className="text-2xl font-bold text-primary leading-tight mb-1">
-              {questionPrimary}
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#0D9488] bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
+                ACTIVE PATIENT SYMPTOM INTAKE
+              </span>
+              <span className="text-xs text-slate-400 font-semibold">
+                Conversational Turn {turnNumber}
+              </span>
+            </div>
+            <h2 className="text-2xl lg:text-3xl font-bold text-slate-800 font-devanagari leading-snug">
+              {currentQuestionText}
             </h2>
-            <p className="text-slate-500 text-base">{questionSecondary}</p>
-            {pageState === 'idle' && (
-              <p className="text-slate-400 text-sm mt-2 flex items-center gap-1">
-                <span className="text-[#0D9488]">ℹ</span>
-                {language === 'hi'
-                  ? 'माइक टैप करें या नीचे विकल्प चुनें।'
-                  : language === 'mr'
-                    ? 'मायक्रोफोन टॅप करा किंवा खालील पर्याय निवडा.'
-                    : 'Tap the microphone to speak, or select a touch option below.'
-                }
+            {language !== 'en' && (
+              <p className="text-sm text-slate-500 mt-1 italic">
+                {currentQuestionEnglish}
               </p>
             )}
           </div>
-          {/* Listen prompt button */}
-          <button className="shrink-0 flex items-center gap-2 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-slate-600 font-semibold text-sm hover:bg-slate-100 transition-colors">
-            <span>🔊</span>
-            {language === 'hi' ? 'सवाल सुनें' : language === 'mr' ? 'प्रश्न ऐका' : 'Listen Prompt'}
-          </button>
         </div>
 
-        {/* Audio guidance (idle only) */}
-        {pageState === 'idle' && (
-          <AudioGuidanceBanner
-            englishText="Tap the microphone to speak your answer, or select a touch option below."
-            regionalText={
-              language === 'hi'
-                ? 'माइक टैप करें और अपनी समस्या बताएं, या नीचे विकल्प चुनें।'
-                : language === 'mr'
-                  ? 'मायक्रोफोन टॅप करा आणि तुमची समस्या सांगा, किंवा खालील पर्याय निवडा.'
-                  : undefined
-            }
-          />
-        )}
+        <AudioGuidanceBanner
+          englishText="Speak your answer clearly into the microphone or tap an answer option on the right."
+          regionalText={
+            language === 'hi'
+              ? 'कृपया अपना उत्तर माइक में स्पष्ट बोलें या दाईं ओर दिए गए विकल्पों में से चुनें।'
+              : language === 'mr'
+              ? 'कृपया आपले उत्तर माईकमध्ये स्पष्ट बोला किंवा उजवीकडील पर्यायांपैकी एक निवडा.'
+              : undefined
+          }
+        />
 
-        {/* Main two-column layout */}
-        <div className="grid grid-cols-[280px_1fr] gap-6 mt-2">
-
-          {/* LEFT: Voice orb panel */}
-          {pageState === 'idle' ? (
-            <button
-              onClick={handleStartListening}
-              className="rounded-3xl flex flex-col items-center justify-between p-6 min-h-[380px] border transition-all duration-300 bg-[#E6FAF5] border-[#A7F3D0] hover:bg-[#D1F4E8] hover:border-[#0D9488] cursor-pointer w-full focus:outline-none focus:ring-4 focus:ring-[#0D9488]/30 text-left shadow-sm hover:shadow-md"
-              aria-label={language === 'hi' ? 'माइक टैप करें और बताएं' : language === 'mr' ? 'मायक्रोफोन टॅप करा' : 'Tap to Speak Your Answer'}
-            >
-              {/* Voice AI badge */}
-              <div className="flex items-center justify-between w-full">
-                <span className="text-xs font-bold px-3 py-1 rounded-full bg-white text-primary border border-slate-200 shadow-sm">
-                  VOICE AI MODE
-                </span>
-                <span className="text-slate-400 text-sm">𝑨</span>
-              </div>
-
-              {/* Orb */}
-              <div className="flex flex-col items-center gap-4 w-full">
-                <VoiceOrb state="idle" />
-
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-primary">
-                    {language === 'hi' ? 'बोलकर बताएं' : language === 'mr' ? 'बोलून सांगा' : 'Tap to Speak'}
-                  </p>
-                  <p className="text-slate-500 text-sm">
-                    {language === 'hi' ? 'माइक टैप करें और बताएं' : language === 'mr' ? 'मायक्रोफोन टॅप करा' : 'Tap to Speak Your Answer'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Language hint */}
-              <div className="w-full bg-white/70 rounded-2xl p-3 border border-[#A7F3D0] mt-2">
-                <p className="text-slate-500 text-xs flex items-center gap-2">
-                  <span className="text-[#0D9488]">ℹ</span>
-                  Hindi • Marathi • English
-                </p>
-                <p className="text-slate-600 text-xs font-devanagari mt-1">
-                  {language === 'hi'
-                    ? '"जैसे: मुझे 3 दिन से पेट में दर्द है।"'
-                    : language === 'mr'
-                      ? '"उदा: मला 3 दिवसांपासून पोटात दुखत आहे."'
-                      : '"E.g. I have had stomach pain for 3 days."'
-                  }
-                </p>
-              </div>
-            </button>
-          ) : (
-            <div className="rounded-3xl flex flex-col items-center justify-between p-6 min-h-[380px] border transition-all duration-500 bg-[#F0FDF9] border-[#0D9488] shadow-sm">
-              {/* Voice AI badge */}
-              <div className="flex items-center justify-between w-full">
-                <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#0D9488] text-white">
-                  ● RECORDING / रिकॉर्डिंग चालू है
-                </span>
-                <span className="text-slate-400 text-sm">𝑨</span>
-              </div>
-
-              {/* Orb */}
-              <div className="flex flex-col items-center gap-4 w-full">
-                <VoiceOrb state="listening" />
-
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-[#0D9488]">
-                    {language === 'hi' ? 'सुन रहे हैं...' : language === 'mr' ? 'ऐकत आहोत...' : 'Listening...'}
-                  </p>
-                  <p className="text-slate-600 text-sm font-devanagari">
-                    {language === 'hi' ? 'अपनी समस्या बताइए' : language === 'mr' ? 'तुमची समस्या सांगा' : 'Please speak naturally'}
-                  </p>
-                  <p className="text-3xl font-mono font-bold text-primary mt-2">
-                    {formatTimer(timerSeconds)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Waveform and stop button */}
-              <div className="w-full flex flex-col items-center gap-4 mt-2">
-                <VoiceWaveform active={true} />
-                <button
-                  onClick={handleStopListening}
-                  className="w-full bg-[#0D9488] text-white rounded-2xl py-4 flex items-center justify-center gap-3 font-bold text-lg hover:bg-[#0B8070] transition-colors shadow-md"
-                >
-                  <Square className="w-6 h-6 fill-white" />
-                  {language === 'hi' ? 'रोकें / Stop' : language === 'mr' ? 'थांबा / Stop' : 'Done Speaking / Stop'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* RIGHT: Touch option grid */}
-          <div>
-            {pageState !== 'listening' && (
+        {/* Dual Input Area: Voice vs Touch */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+          {/* Voice Input Card (5 cols) */}
+          <div className="lg:col-span-5 bg-gradient-to-b from-[#F0FDF9] to-white rounded-3xl p-8 border-2 border-[#0D9488]/30 shadow-md flex flex-col items-center justify-center text-center relative overflow-hidden">
+            {!isRecording && !isRequesting ? (
               <>
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider flex items-center gap-2">
-                    <span className="w-px h-4 bg-slate-300" />
-                    {language === 'hi' ? 'OR TAP YOUR ANSWER / या नीचे स्पर्श करें' : language === 'mr' ? 'OR TAP YOUR ANSWER / किंवा खाली स्पर्श करा' : 'OR TAP YOUR ANSWER / या नीचे स्पर्श करें'}
-                  </p>
+                <div
+                  className="w-28 h-28 rounded-full bg-gradient-to-tr from-[#064E3B] to-[#0D9488] text-white flex items-center justify-center mb-6 shadow-xl shadow-teal-900/20 hover:scale-105 transition-transform cursor-pointer"
+                  onClick={handleStartListening}
+                >
+                  <Mic className="w-12 h-12 animate-pulse" />
                 </div>
+                <h3 className="text-xl font-bold text-slate-800 mb-1 font-devanagari">
+                  {language === 'hi' ? 'बोलने के लिए यहाँ दबाएं' : language === 'mr' ? 'बोलण्यासाठी येथे दाबा' : 'Tap to Speak'}
+                </h3>
+                <p className="text-xs text-slate-500 mb-6 max-w-xs">
+                  {language === 'hi' ? 'अपनी भाषा (हिंदी/मराठी/अंग्रेजी) में स्पष्ट बोलें' : language === 'mr' ? 'आपल्या भाषेत (मराठी/हिंदी/इंग्रजी) स्पष्ट बोला' : 'Speak naturally in Hindi, Marathi, or English'}
+                </p>
 
-                <div className={`grid gap-3 ${question.touchOptions.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                  {question.touchOptions.map(option => {
-                    const isSelected = selectedTouchOption === option.id;
-                    return (
-                      <button
-                        key={option.id}
-                        onClick={() => handleTouchSelect(option.id)}
-                        className={`rounded-2xl p-5 text-left border-2 transition-all duration-150 flex items-center gap-4 min-h-[80px] ${
-                          isSelected
-                            ? 'border-primary bg-secondary shadow-md'
-                            : option.isRedFlag
-                              ? 'border-slate-200 bg-white hover:border-red-300 hover:bg-red-50'
-                              : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
-                        }`}
-                      >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          isSelected ? 'bg-primary text-white' : option.isRedFlag ? 'bg-red-50 text-destructive' : 'bg-slate-100 text-slate-500'
-                        }`}>
-                          {isSelected ? '✓' : option.isRedFlag ? '⚠' : '+'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-bold text-base leading-tight ${isSelected ? 'text-primary' : 'text-slate-800'}`}>
-                            {getOptionLabel(option)}
-                          </p>
-                          <p className="text-slate-400 text-sm mt-0.5 truncate">{getOptionSubLabel(option)}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                <button
+                  type="button"
+                  onClick={handleStartListening}
+                  className="bg-[#064E3B] hover:bg-[#053F30] text-white font-bold text-base px-8 py-3.5 rounded-2xl shadow-lg transition-all flex items-center gap-2 mb-4"
+                >
+                  <Sparkles className="w-5 h-5 text-teal-300" />
+                  <span>{t('voice.tapToSpeak')}</span>
+                </button>
 
-                {/* Touch continue button */}
-                {selectedTouchOption && (
-                  <div className="mt-4">
-                    <button
-                      onClick={handleTouchContinue}
-                      className="w-full bg-primary text-white rounded-2xl py-4 flex items-center justify-center gap-3 font-bold text-lg hover:bg-primary/90 transition-colors shadow-md"
-                    >
-                      {language === 'hi' ? 'इस विकल्प की पुष्टि करें →' : language === 'mr' ? 'हा पर्याय निवडा →' : 'Confirm this selection →'}
-                    </button>
+                {recordError && (
+                  <div className="w-full bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3 rounded-xl mb-4 flex items-start gap-2 text-left">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Microphone Notice</p>
+                      <p className="mt-0.5">{recordError}</p>
+                    </div>
                   </div>
                 )}
+
+                <div className="bg-white/80 backdrop-blur px-4 py-2 rounded-xl border border-slate-200 text-xs text-slate-600 flex items-center gap-2">
+                  <span className="text-[#0D9488] font-bold">●</span>
+                  <span>Hindi • Marathi • English</span>
+                </div>
+              </>
+            ) : isRequesting ? (
+              <>
+                <div className="w-28 h-28 rounded-full bg-amber-500 text-white flex items-center justify-center animate-pulse mb-4 shadow-xl shadow-amber-500/30">
+                  <Volume2 className="w-12 h-12" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">
+                  Requesting Microphone...
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Please grant browser microphone permission if prompted.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="relative mb-6">
+                  <div className="w-28 h-28 rounded-full bg-red-500 animate-pulse flex items-center justify-center shadow-xl shadow-red-500/30">
+                    <Mic className="w-12 h-12 text-white" />
+                  </div>
+                  <div className="absolute inset-0 rounded-full border-4 border-red-400 animate-ping opacity-75" />
+                </div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-bold mb-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                  <span>RECORDING • {formatDuration(duration)}</span>
+                </div>
+                <p className="text-slate-600 text-xs mb-4 font-medium">
+                  {language === 'hi' ? 'कृपया स्पष्ट बोलें...' : language === 'mr' ? 'कृपया स्पष्ट बोला...' : 'Please speak naturally...'}
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleStopListening}
+                    disabled={isStopping || isTransitioning}
+                    className="bg-red-600 hover:bg-red-700 text-white font-bold text-sm px-6 py-3 rounded-2xl shadow-md transition-all flex items-center gap-2"
+                  >
+                    <MicOff className="w-5 h-5" />
+                    <span>{isStopping || isTransitioning ? 'Processing...' : t('voice.doneSpeaking')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetRecording}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 p-3 rounded-2xl transition-all"
+                    title="Cancel recording"
+                  >
+                    <RotateCcw className="w-5 h-5" />
+                  </button>
+                </div>
               </>
             )}
+          </div>
 
-            {/* Listening state — right panel message */}
-            {pageState === 'listening' && (
-              <div className="h-full flex items-center justify-center">
-                <div className="bg-[#F0FDF9] border-2 border-[#A7F3D0] rounded-3xl p-8 text-center max-w-sm">
-                  <p className="text-[#0D9488] font-bold text-2xl mb-2">
-                    {language === 'hi' ? 'सुन रहे हैं...' : language === 'mr' ? 'ऐकत आहोत...' : 'Listening...'}
-                  </p>
-                  <p className="text-slate-600">
-                    {language === 'hi'
-                      ? 'कृपया शांत रहकर स्वाभाविक रूप से बोलें।'
-                      : language === 'mr'
-                        ? 'कृपया शांत राहून नैसर्गिकपणे बोला.'
-                        : 'Please speak naturally into the kiosk microphone.'
-                    }
-                  </p>
-                  <p className="text-slate-400 text-sm mt-3 font-devanagari">
-                    {language === 'hi'
-                      ? 'अपनी पसंदीदा भाषा में स्पष्ट रूप से बोलें।'
-                      : 'Hindi • Marathi • English'
-                    }
-                  </p>
+          {/* Touch Options Grid (7 cols) */}
+          <div className="lg:col-span-7 flex flex-col justify-between bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <div>
+              <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  {t('voice.orTapAnswer')}
+                </span>
+                <span className="text-xs text-slate-400">
+                  {touchOptions.length} options available
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {touchOptions.map((option: TouchOption) => {
+                  const isSelected = selectedTouchOption?.id === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleTouchSelect(option)}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all relative flex flex-col justify-between min-h-[90px] ${
+                        isSelected
+                          ? 'border-[#064E3B] bg-emerald-50/60 shadow-sm'
+                          : option.isRedFlag
+                          ? 'border-red-100 bg-red-50/30 hover:border-red-300'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <span className={`text-sm font-bold font-devanagari ${
+                          isSelected ? 'text-[#064E3B]' : option.isRedFlag ? 'text-red-700' : 'text-slate-800'
+                        }`}>
+                          {language === 'hi'
+                            ? option.labelHindi
+                            : language === 'mr'
+                            ? option.labelMarathi
+                            : option.label}
+                        </span>
+                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${
+                          isSelected
+                            ? 'bg-[#064E3B] text-white'
+                            : option.isRedFlag
+                            ? 'bg-red-100 text-red-600'
+                            : 'bg-slate-100 text-slate-400'
+                        }`}>
+                          {isSelected ? <Check className="w-3.5 h-3.5" /> : option.isRedFlag ? <AlertCircle className="w-3.5 h-3.5" /> : '+'}
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        {language !== 'en' ? option.label : option.labelHindi}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {selectedTouchOption && (
+              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="text-xs text-slate-600">
+                  <span className="font-bold text-[#064E3B]">{t('voice.confirmSelection')}:</span>{' '}
+                  {language === 'hi' ? selectedTouchOption.labelHindi : selectedTouchOption.label}
                 </div>
+                <button
+                  type="button"
+                  onClick={handleTouchContinue}
+                  className="bg-[#064E3B] hover:bg-[#053F30] text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-1 shadow-sm"
+                >
+                  <span>{t('common.continue')}</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
           </div>
         </div>
       </div>
-
-      {/* Hidden handlers — exposed for KioskBottomBar */}
-      <button
-        id="voice-back-btn"
-        className="hidden"
-        onClick={handleBack}
-        aria-hidden="true"
-      />
-      {pageState === 'idle' ? (
-        <button
-          id="voice-action-btn"
-          className="hidden"
-          onClick={handleStartListening}
-          aria-hidden="true"
-        />
-      ) : (
-        <button
-          id="voice-action-btn"
-          className="hidden"
-          onClick={handleStopListening}
-          aria-hidden="true"
-        />
-      )}
     </div>
   );
 }

@@ -1,218 +1,349 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Loader2, Circle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import { MockVoiceProvider, VOICE_QUESTIONS } from '@/services/voice/MockVoiceProvider';
-import { VoiceWaveform } from '@/components/kiosk/VoiceWaveform';
-import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
-
-type PipelineStage = 'audio_captured' | 'understanding' | 'preparing' | 'done';
-
-const STAGE_DURATIONS = {
-  audio_captured: 400,
-  understanding: 900,
-  preparing: 500,
-} as const;
-
-const VOICE_STEP_BASE = 9;
+import { MockVoiceProvider } from '@/services/voice/MockVoiceProvider';
+import { transcribeAudio } from '@/services/voice/speechService';
+import { processClinicalTurn } from '@/services/clinical/clinicalService';
+import { useTranslation } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
+import { Loader2, CheckCircle2, Mic, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function VoiceProcessing() {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     language,
-    voiceIntake,
+    addVoiceResponse,
+    setActiveVoiceInput,
     setActiveTranscript,
+    clinicalCaseState,
+    updateClinicalCase,
+    addConversationTurn,
+    currentConversationTurn,
   } = usePatientSession();
+  const { t } = useTranslation();
 
-  const [stage, setStage] = useState<PipelineStage>('audio_captured');
+  const state = location.state as {
+    questionId?: string;
+    questionIndex?: number;
+    method?: 'voice' | 'touch';
+    audioBlob?: Blob;
+    touchText?: string;
+    touchOptionId?: string;
+    isRedFlag?: boolean;
+    questionPrompt?: string;
+  } | null;
 
-  const currentIndex = voiceIntake.currentQuestionIndex;
-  const question = VOICE_QUESTIONS[currentIndex];
-  const globalStep = VOICE_STEP_BASE + currentIndex + 0.5; // halfway through
+  const questionId = state?.questionId || 'q1_chief_complaint';
+  const questionIndex = state?.questionIndex ?? 0;
+  const audioBlob = state?.audioBlob;
+  const touchText = state?.touchText;
+  const questionPrompt = state?.questionPrompt || 'Please describe your symptoms';
+  const turnNum = (currentConversationTurn || 1);
+
+  // Steps: 1 = Waveform captured, 2 = STT, 3 = Entity Extraction & Orchestration, 4 = Complete
+  const [currentStep, setCurrentStep] = useState<number>(2);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Store latest state and action functions in a ref so the effect never restarts on re-renders
+  const stateRef = useRef({
+    language,
+    audioBlob,
+    touchText,
+    questionId,
+    questionIndex,
+    questionPrompt,
+    turnNum,
+    clinicalCaseState,
+    navigate,
+    addVoiceResponse,
+    setActiveVoiceInput,
+    setActiveTranscript,
+    updateClinicalCase,
+    addConversationTurn,
+  });
 
   useEffect(() => {
-    // Safety: if no active voice input, redirect back
-    if (voiceIntake.activeInputMethod !== 'voice') {
-      navigate('/patient/voice', { replace: true });
-      return;
+    stateRef.current = {
+      language,
+      audioBlob,
+      touchText,
+      questionId,
+      questionIndex,
+      questionPrompt,
+      turnNum,
+      clinicalCaseState,
+      navigate,
+      addVoiceResponse,
+      setActiveVoiceInput,
+      setActiveTranscript,
+      updateClinicalCase,
+      addConversationTurn,
+    };
+  });
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function process() {
+      const {
+        language: currentLang,
+        audioBlob: currentBlob,
+        touchText: currentTouch,
+        questionId: qId,
+        questionIndex: qIdx,
+        questionPrompt: qPrompt,
+        turnNum: cTurn,
+        clinicalCaseState: currentCaseState,
+        navigate: nav,
+        addVoiceResponse: addResp,
+        setActiveVoiceInput: setVoiceInput,
+        setActiveTranscript: setTranscript,
+        updateClinicalCase: updateCase,
+        addConversationTurn: addTurn,
+      } = stateRef.current;
+
+      try {
+        let transcriptText = '';
+        let isRedFlag = false;
+
+        if (currentTouch) {
+          // Touch input method
+          transcriptText = currentTouch;
+          isRedFlag = state?.isRedFlag || false;
+          setCurrentStep(3);
+        } else if (currentBlob && currentBlob.size > 0) {
+          // 1. Transcription step via backend API
+          if (isCancelled) return;
+          setCurrentStep(2);
+
+          const res = await transcribeAudio(currentBlob, currentLang);
+          if (isCancelled) return;
+
+          transcriptText = res.transcript || '';
+        } else {
+          // Fallback mock progression
+          await new Promise((r) => setTimeout(r, 600));
+          if (isCancelled) return;
+          const mockResult = MockVoiceProvider.getMockResult(currentLang, qId);
+          transcriptText = mockResult.transcript;
+          isRedFlag = mockResult.isRedFlag;
+        }
+
+        if (isCancelled) return;
+
+        // 2. STT completed -> Activate Clinical Entity Extraction & Orchestration (Stage 4 & 5)
+        setCurrentStep(3);
+
+        let clinicalRes = null;
+        try {
+          clinicalRes = await processClinicalTurn(
+            transcriptText,
+            currentLang,
+            currentCaseState
+          );
+          if (clinicalRes && updateCase) {
+            updateCase(clinicalRes);
+            if (clinicalRes.requires_emergency_attention) {
+              isRedFlag = true;
+            }
+          }
+        } catch (clinicalErr) {
+          console.warn('Clinical turn orchestrator warning:', clinicalErr);
+        }
+
+        if (isCancelled) return;
+
+        // Record conversational turn in session
+        if (addTurn) {
+          addTurn({
+            turn: cTurn,
+            question: qPrompt,
+            question_type: clinicalRes?.next_question_type || 'GENERAL',
+            patient_transcript: transcriptText,
+            language: currentLang,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // Update central session context state
+        setVoiceInput(currentTouch ? 'touch' : 'voice');
+        setTranscript(transcriptText, isRedFlag);
+        addResp({
+          questionId: qId,
+          question: qPrompt,
+          questionHindi: qPrompt,
+          inputMethod: currentTouch ? 'touch' : 'voice',
+          transcript: transcriptText,
+          confirmed: true,
+          timestamp: new Date().toISOString(),
+          isRedFlag,
+        });
+
+        // 3. Entity Extraction visual progress
+        await new Promise((r) => setTimeout(r, 500));
+        if (isCancelled) return;
+
+        setCurrentStep(4);
+
+        // 4. Smooth transition to VoiceConfirmation
+        await new Promise((r) => setTimeout(r, 300));
+        if (isCancelled) return;
+
+        nav('/patient/voice/confirmation', {
+          state: {
+            questionId: qId,
+            questionIndex: qIdx,
+            method: currentTouch ? 'touch' : 'voice',
+            nextQuestion: clinicalRes?.next_question,
+            nextQuestionRegional: clinicalRes?.next_question_regional,
+            nextQuestionType: clinicalRes?.next_question_type,
+            isCaseComplete: clinicalRes?.is_case_complete,
+            requiresEmergency: isRedFlag,
+          },
+          replace: true,
+        });
+      } catch (err: any) {
+        if (isCancelled) return;
+        console.error('Voice processing pipeline error:', err);
+        setErrorMessage(
+          err?.message || 'Failed to process audio. You may re-record or use touch fallback.'
+        );
+      }
     }
 
-    // Deterministic pipeline: resolve mock transcript, then advance stages
-    const result = MockVoiceProvider.getMockResult(language, question?.id ?? 'q1_location');
+    process();
 
-    const t1 = setTimeout(() => setStage('understanding'), STAGE_DURATIONS.audio_captured);
-    const t2 = setTimeout(() => setStage('preparing'), STAGE_DURATIONS.audio_captured + STAGE_DURATIONS.understanding);
-    const t3 = setTimeout(() => {
-      setStage('done');
-      // Persist the result into context before navigating
-      setActiveTranscript(result.transcript, result.isRedFlag);
-    }, STAGE_DURATIONS.audio_captured + STAGE_DURATIONS.understanding + STAGE_DURATIONS.preparing);
-    const t4 = setTimeout(() => {
-      navigate('/patient/voice-confirmation', { replace: true });
-    }, MockVoiceProvider.getProcessingDuration());
+    return () => {
+      isCancelled = true;
+    };
+  }, []); // Run EXACTLY ONCE on component mount
 
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useKioskScreen({
+    isContinueDisabled: true,
+    audioPrompt: t('voiceProcessing.audioGuidance') || 'Please wait while your voice response is analyzed.',
+  });
 
-  const isComplete = (s: PipelineStage, current: PipelineStage) => {
-    const order: PipelineStage[] = ['audio_captured', 'understanding', 'preparing', 'done'];
-    return order.indexOf(current) > order.indexOf(s);
-  };
-  const isActive = (s: PipelineStage, current: PipelineStage) => s === current;
-
-  const stages = [
+  const steps = [
     {
-      id: 'audio_captured' as PipelineStage,
-      label: language === 'hi' ? 'आवाज़ रिकॉर्ड की गई' : language === 'mr' ? 'आवाज रेकॉर्ड झाली' : 'Audio Captured',
-      sublabel: language === 'hi' ? 'ध्वनि दर्ज की गई' : 'Your response was recorded',
+      label: language === 'hi' ? 'ऑडियो रिकॉर्डिंग प्राप्त हुई' : language === 'mr' ? 'ऑडिओ रेकॉर्डिंग प्राप्त झाली' : 'Audio Waveform Captured',
+      sublabel: language === 'hi' ? 'आपकी आवाज दर्ज कर ली गई है' : language === 'mr' ? 'तुमचा आवाज रेकॉर्ड झाला आहे' : 'Your response was recorded',
+      done: true,
+      active: false,
     },
     {
-      id: 'understanding' as PipelineStage,
-      label: language === 'hi' ? 'आपका उत्तर समझ रहे हैं' : language === 'mr' ? 'तुमचे उत्तर समजत आहोत' : 'Understanding Your Response',
-      sublabel: language === 'hi' ? 'भाषा पहचान व रूपांतरण जारी है...' : 'Recognising spoken language...',
+      label: language === 'hi' ? 'वाणी पहचान और भाषा विश्लेषण' : language === 'mr' ? 'भाषण-ते-मजकूर आणि भाषा ओळख' : 'Speech-to-Text & Language Detection',
+      sublabel: language === 'hi' ? 'भाषा पहचान की जा रही है...' : language === 'mr' ? 'भाषा ओळखली जात आहे...' : 'Recognising spoken language...',
+      done: currentStep > 2,
+      active: currentStep === 2 && !errorMessage,
     },
     {
-      id: 'preparing' as PipelineStage,
-      label: language === 'hi' ? 'उत्तर तैयार हो रहा है' : language === 'mr' ? 'उत्तर तयार होत आहे' : 'Preparing Your Answer',
-      sublabel: language === 'hi' ? 'लक्षण एवं विवरण वर्गीकरण' : 'Organising your response...',
+      label: language === 'hi' ? 'नैदानिक बुद्धिमत्ता व लक्षण संरचना' : language === 'mr' ? 'वैद्यकीय माहिती व लक्षण रचना' : 'Clinical Intelligence & Case Structuring',
+      sublabel: language === 'hi' ? 'लक्षण एवं रेड-फ्लैग विश्लेषण...' : language === 'mr' ? 'लक्षणे आणि तातडीचे विश्लेषण...' : 'Structuring clinical entities and red flags...',
+      done: currentStep > 3,
+      active: currentStep === 3 && !errorMessage,
     },
   ];
 
   return (
-    <div className="w-full">
-      <StepProgressIndicator
-        current={Math.floor(globalStep)}
-        total={24}
-        title={language === 'hi' ? 'उत्तर का विश्लेषण' : language === 'mr' ? 'उत्तर विश्लेषण' : 'VOICE PROCESSING'}
-        badge={`${Math.round(((VOICE_STEP_BASE + currentIndex) / 24) * 100)}% Complete`}
-      />
+    <div className="w-full min-h-[80vh] flex flex-col items-center justify-center px-6 py-12">
+      <div className="max-w-xl w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center">
+        {/* Animated Processing Header */}
+        <div className="relative mx-auto w-24 h-24 mb-6 flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-teal-100 animate-ping opacity-50" />
+          <div className="relative w-20 h-20 rounded-full bg-gradient-to-tr from-[#064E3B] to-[#0D9488] flex items-center justify-center shadow-lg text-white">
+            {errorMessage ? (
+              <AlertCircle className="w-10 h-10 text-amber-300" />
+            ) : (
+              <Loader2 className="w-10 h-10 animate-spin" />
+            )}
+          </div>
+        </div>
 
-      <div className="max-w-7xl mx-auto px-6 pt-6 pb-32">
-        {/* Question context card */}
-        {question && (
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm mb-6 flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
-              <span className="text-white text-lg">🎙</span>
+        <span className="text-xs font-bold uppercase tracking-wider text-[#0D9488] bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
+          CONVERSATIONAL PATIENT INTAKE
+        </span>
+
+        <h2 className="text-2xl font-bold text-slate-800 mt-4 mb-1 font-devanagari">
+          {questionPrompt}
+        </h2>
+        <p className="text-sm text-slate-500 mb-8">
+          {errorMessage
+            ? 'Transcription issue encountered'
+            : language === 'hi'
+            ? 'आपके उत्तर का विश्लेषण किया जा रहा है...'
+            : language === 'mr'
+            ? 'तुमच्या उत्तराचे विश्लेषण केले जात आहे...'
+            : 'Understanding your response...'}
+        </p>
+
+        {errorMessage ? (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-amber-900">Audio Processing Notice</p>
+                <p className="text-xs text-amber-700 mt-1">{errorMessage}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1">
-                ACTIVE PATIENT SYMPTOM INTAKE • मुख्य लक्षण विवरण
-              </p>
-              <p className="text-lg font-bold text-primary">
-                {language === 'hi' ? question.questionHindi : language === 'mr' ? question.questionMarathi : question.question}
-              </p>
-              <p className="text-slate-500 text-sm">
-                {language !== 'en' ? question.question : question.questionHindi}
-              </p>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/patient/voice')}
+                className="bg-[#064E3B] hover:bg-[#053F30] text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5 shadow-sm"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Speak Again</span>
+              </button>
             </div>
-            <div className="ml-auto shrink-0 flex items-center gap-1 text-[#0D9488] text-sm font-bold">
-              <span>🎙</span>
-              <span>4.2s Captured</span>
+          </div>
+        ) : (
+          /* Processing Steps Timeline */
+          <div className="space-y-4 text-left mb-6">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+              PROCESSING STEPS
             </div>
+            {steps.map((step, idx) => (
+              <div
+                key={idx}
+                className={`flex items-start gap-4 p-4 rounded-2xl border transition-all ${
+                  step.done
+                    ? 'border-[#0D9488] bg-[#F0FDF9]'
+                    : step.active
+                    ? 'border-[#2563EB] bg-[#EFF6FF]'
+                    : 'border-slate-100 bg-slate-50/50 opacity-60'
+                }`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                    step.done ? 'bg-[#0D9488]' : step.active ? 'bg-[#2563EB]' : 'bg-slate-200'
+                  }`}
+                >
+                  {step.done ? (
+                    <CheckCircle2 className="w-5 h-5 text-white" />
+                  ) : step.active ? (
+                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  ) : (
+                    <span className="text-xs font-bold text-slate-500">{idx + 1}</span>
+                  )}
+                </div>
+                <div>
+                  <p className={`font-bold text-sm ${step.done ? 'text-[#0D9488]' : step.active ? 'text-[#1E40AF]' : 'text-slate-400'}`}>
+                    {step.label}
+                  </p>
+                  <p className={`text-xs ${step.done || step.active ? 'text-slate-600' : 'text-slate-300'}`}>
+                    {step.sublabel}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Two-column layout */}
-        <div className="grid grid-cols-2 gap-6">
-
-          {/* LEFT: Processing animation */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 flex flex-col items-center justify-center gap-6 min-h-[360px]">
-            {/* Spinning orb */}
-            <div className="relative flex items-center justify-center">
-              <div className="w-32 h-32 rounded-full bg-[#E6FAF5] flex items-center justify-center">
-                <div className="w-20 h-20 rounded-full bg-[#CCFBF1] flex items-center justify-center">
-                  <div className="w-14 h-14 rounded-full bg-[#0D9488] flex items-center justify-center">
-                    {stage === 'done'
-                      ? <CheckCircle2 className="w-8 h-8 text-white" />
-                      : <Loader2 className="w-8 h-8 text-white animate-spin" />
-                    }
-                  </div>
-                </div>
-              </div>
-              {/* Dashed rotating ring */}
-              <div className="absolute inset-0 rounded-full border-2 border-dashed border-[#0D9488]/30 animate-spin" style={{ animationDuration: '3s' }} />
-            </div>
-
-            <div className="text-center">
-              <p className="text-2xl font-bold text-primary">
-                {language === 'hi' ? 'आपके उत्तर को समझा जा रहा है...' : language === 'mr' ? 'तुमचे उत्तर समजत आहोत...' : 'Processing your answer...'}
-              </p>
-              <p className="text-slate-500 mt-2 font-devanagari">
-                {language !== 'hi' ? 'आपकी बात समझ रहे हैं...' : 'Understanding your response...'}
-              </p>
-            </div>
-
-            {/* Patient instruction */}
-            <div className="bg-[#EFF6FF] rounded-2xl px-5 py-3 text-center border border-[#BFDBFE]">
-              <p className="text-[#1E40AF] font-bold text-sm">
-                {language === 'hi'
-                  ? 'कृपया एक पल प्रतीक्षा करें। स्क्रीन को न छुएं।'
-                  : language === 'mr'
-                    ? 'कृपया एक क्षण थांबा. स्क्रीनला स्पर्श करू नका.'
-                    : 'Please wait a moment. Do not touch the screen.'
-                }
-              </p>
-            </div>
-          </div>
-
-          {/* RIGHT: Pipeline stages */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                {language === 'hi' ? 'विश्लेषण चरण' : 'PROCESSING STEPS'}
-              </p>
-            </div>
-
-            {stages.map((s) => {
-              const done = isComplete(s.id, stage);
-              const active = isActive(s.id, stage);
-              return (
-                <div key={s.id} className={`rounded-2xl p-5 border-2 flex items-center gap-4 transition-all duration-500 ${
-                  done
-                    ? 'border-[#0D9488] bg-[#F0FDF9]'
-                    : active
-                      ? 'border-[#2563EB] bg-[#EFF6FF]'
-                      : 'border-slate-100 bg-slate-50'
-                }`}>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    done ? 'bg-[#0D9488]' : active ? 'bg-[#2563EB]' : 'bg-slate-200'
-                  }`}>
-                    {done
-                      ? <CheckCircle2 className="w-6 h-6 text-white" />
-                      : active
-                        ? <Loader2 className="w-6 h-6 text-white animate-spin" />
-                        : <Circle className="w-6 h-6 text-slate-400" />
-                    }
-                  </div>
-                  <div>
-                    <p className={`font-bold text-base ${done ? 'text-[#0D9488]' : active ? 'text-[#1E40AF]' : 'text-slate-400'}`}>
-                      {s.label}
-                    </p>
-                    <p className={`text-sm ${done || active ? 'text-slate-600' : 'text-slate-300'}`}>
-                      {s.sublabel}
-                    </p>
-                  </div>
-                  <div className="ml-auto text-xs font-bold">
-                    {done && <span className="text-[#0D9488]">Complete</span>}
-                    {active && <span className="text-[#2563EB]">Active</span>}
-                    {!done && !active && <span className="text-slate-300">Pending</span>}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Waveform audio sample */}
-            <div className="rounded-2xl p-4 border border-slate-200 bg-white flex items-center gap-4 mt-4">
-              <span className="text-[#0D9488] text-xl">♪</span>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-slate-700">
-                  {language === 'hi' ? 'आवाज़ का नमूना' : 'Audio Sample'} • 4.2s
-                </p>
-              </div>
-              <VoiceWaveform active={stage === 'understanding'} />
-            </div>
-          </div>
+        {/* Audio Wave Badge */}
+        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex items-center justify-center gap-3 text-xs text-slate-500">
+          <Mic className="w-4 h-4 text-[#0D9488]" />
+          <span>Live Audio Capture • {audioBlob ? `${(audioBlob.size / 1024).toFixed(1)} KB` : 'Direct Input'}</span>
         </div>
       </div>
     </div>

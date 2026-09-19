@@ -1,4 +1,4 @@
-"""Queue service managing daily atomic token sequence and OPD queue transitions."""
+"""OPD queue management service with atomic daily token allocation."""
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -8,37 +8,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.encounter import Encounter, EncounterStatus, EncounterPriority
-from app.models.hospital_settings import HospitalSettings
 from app.models.patient import Patient
 from app.models.queue import QueueEntry, QueueStatus
-from app.schemas.encounter import EncounterSubmitResponse
+from app.models.hospital_settings import HospitalSettings
 from app.schemas.queue import QueueItemResponse, QueueCallResponse
+from app.schemas.encounter import EncounterSubmitResponse
 from app.services.consent.consent_service import get_active_consent_for_encounter
+from app.services.audit.audit_service import log_audit_event
 
 
 async def ensure_hospital_settings(db: AsyncSession) -> HospitalSettings:
-    """Ensures hospital_settings row 1 exists for row locking."""
-    query = select(HospitalSettings).where(HospitalSettings.id == 1)
-    result = await db.execute(query)
-    settings_obj = result.scalar_one_or_none()
-    if not settings_obj:
-        settings_obj = HospitalSettings(id=1, hospital_name="MediKiosk District Hospital")
-        db.add(settings_obj)
-        await db.flush()
-    return settings_obj
+    """Ensures at least one hospital settings row exists for locking."""
+    res = await db.execute(select(HospitalSettings).where(HospitalSettings.id == 1))
+    settings_row = res.scalar_one_or_none()
+    if not settings_row:
+        settings_row = HospitalSettings(id=1, hospital_name="MediKiosk OPD")
+        db.add(settings_row)
+        await db.commit()
+        await db.refresh(settings_row)
+    return settings_row
 
 
-async def allocate_daily_token(db: AsyncSession) -> int:
-    """Atomically allocates the next sequential daily token using row locking.
-    
-    Locks hospital_settings row 1 within the current transaction to prevent
-    race conditions between concurrent kiosks.
-    """
-    # 1. Acquire row lock on settings row 1 (PostgreSQL row locking)
-    lock_query = select(HospitalSettings).where(HospitalSettings.id == 1)
-    bind = db.get_bind()
-    if bind and bind.dialect.name == "postgresql":
-        lock_query = lock_query.with_for_update()
+async def allocate_daily_token(
+    db: AsyncSession,
+) -> int:
+    """Atomically allocates the next sequential daily token using row locking."""
+    # 1. Row lock on HospitalSettings to serialize concurrent token requests
+    lock_query = (
+        select(HospitalSettings)
+        .where(HospitalSettings.id == 1)
+        .with_for_update()
+    )
 
     result = await db.execute(lock_query)
     locked_row = result.scalar_one_or_none()
@@ -125,6 +125,18 @@ async def submit_encounter_to_queue(
     # 6. Update encounter status
     encounter.status = EncounterStatus.WAITING
 
+    await db.flush()
+
+    await log_audit_event(
+        db=db,
+        action="TOKEN_GENERATED",
+        entity_type="QUEUE_ENTRY",
+        entity_id=str(queue_entry.id),
+        encounter_id=encounter.id,
+        patient_id=patient.id,
+        details={"token_number": token_num, "priority": encounter.priority.value},
+    )
+
     await db.commit()
     await db.refresh(queue_entry)
 
@@ -201,6 +213,7 @@ async def get_today_queue(
 async def call_queue_entry(
     db: AsyncSession,
     queue_entry_id: uuid.UUID,
+    user_id: Optional[uuid.UUID] = None,
 ) -> QueueCallResponse:
     """Doctor action: Calls patient into consultation room, updating queue and encounter."""
     query = (
@@ -239,6 +252,19 @@ async def call_queue_entry(
     if not encounter.started_at:
         encounter.started_at = now
 
+    await db.flush()
+
+    await log_audit_event(
+        db=db,
+        action="CONSULTATION_STARTED",
+        entity_type="QUEUE_ENTRY",
+        entity_id=str(queue_entry.id),
+        encounter_id=encounter.id,
+        patient_id=encounter.patient_id,
+        user_id=user_id,
+        details={"token_number": queue_entry.token_number},
+    )
+
     await db.commit()
     await db.refresh(queue_entry)
 
@@ -254,6 +280,7 @@ async def call_queue_entry(
 async def cancel_queue_entry(
     db: AsyncSession,
     queue_entry_id: uuid.UUID,
+    user_id: Optional[uuid.UUID] = None,
 ) -> QueueEntry:
     """Cancels an active queue entry and closes the encounter."""
     query = (
@@ -277,6 +304,18 @@ async def cancel_queue_entry(
     if encounter:
         encounter.status = EncounterStatus.CLOSED
         encounter.closed_at = now
+
+    await db.flush()
+
+    await log_audit_event(
+        db=db,
+        action="QUEUE_ENTRY_CANCELLED",
+        entity_type="QUEUE_ENTRY",
+        entity_id=str(queue_entry.id),
+        encounter_id=encounter.id if encounter else None,
+        patient_id=encounter.patient_id if encounter else None,
+        user_id=user_id,
+    )
 
     await db.commit()
     await db.refresh(queue_entry)

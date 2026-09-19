@@ -1,394 +1,315 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Activity, Mic, Pill, HeartPulse, FileText, CheckCircle2, AlertTriangle, Edit2, ShieldAlert } from 'lucide-react';
+import { 
+  User, 
+  Activity, 
+  HeartPulse, 
+  Pill, 
+  AlertTriangle, 
+  FileText, 
+  Mic, 
+  CheckCircle2, 
+  Edit2
+} from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import type { PatientDocument } from '@/features/patient/PatientSessionContext';
-import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
-import { Modal } from '@/components/ui/Modal';
 import { AYUSH_QUESTIONS } from '@/services/ayush/MockAyushProvider';
+import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
+import { useTranslation } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
 
 export default function Review() {
   const navigate = useNavigate();
-  const { 
-    language, 
-    patient, 
-    abhaId, 
-    identificationMethod, 
-    chiefComplaint, 
-    voiceIntake, 
-    ayushIntake, 
-    medicationHistory, 
-    allergyHistory, 
+  const { t } = useTranslation();
+  const {
+    patient,
+    abhaId,
+    identificationMethod,
+    chiefComplaint,
+    voiceIntake,
+    ayushIntake,
+    medicationHistory,
+    allergyHistory,
     documentIntake,
-    setReviewConfirmed 
+    setReviewConfirmed,
   } = usePatientSession();
 
-  const [previewDoc, setPreviewDoc] = useState<PatientDocument | null>(null);
-
-  const maskPhone = (phone?: string) => {
-    if (!phone) return '';
-    if (phone.length === 10) return `${phone.slice(0, 2)}••••${phone.slice(-4)}`;
-    return phone;
-  };
-
-  const maskAbha = (abha?: string) => {
-    if (!abha) return '';
-    const clean = abha.replace(/-/g, '');
-    if (clean.length === 14) return `XXXX XXXX ${clean.slice(-4)}`;
-    return abha;
-  };
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleConfirm = () => {
+    setIsSubmitting(true);
     setReviewConfirmed(true);
-    navigate('/patient/submit');
+    setTimeout(() => {
+      navigate('/patient/submit');
+    }, 400);
   };
 
-  // The bottom bar proxy
-  const handleContinueProxy = () => {
-    handleConfirm();
-  };
-
-  const handleBackProxy = () => {
+  const handleBack = () => {
     navigate('/patient/documents/review');
   };
 
+  useKioskScreen({
+    onContinue: handleConfirm,
+    onBack: handleBack,
+    continueLabelKey: 'review.confirmAndSubmit',
+    isContinueDisabled: isSubmitting,
+    audioPrompt: t('review.audioGuidance') || 'Please review your complete intake summary on the screen. Tap Confirm and Submit when ready.',
+  });
+
   return (
     <div className="w-full">
-      <button id="patient-review-continue-btn" className="hidden" onClick={handleContinueProxy} />
-      <button id="patient-review-back-btn" className="hidden" onClick={handleBackProxy} />
-
       <StepProgressIndicator
         current={17}
         total={24}
-        title={language === 'hi' ? 'अपनी जानकारी जाँचें' : language === 'mr' ? 'तुमची माहिती तपासा' : 'REVIEW YOUR INFORMATION'}
+        title={t('review.title')}
       />
 
-      <div className="max-w-4xl mx-auto px-6 pt-6 pb-32">
-        
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-primary mb-2">
-            {language === 'hi' ? 'अपनी जानकारी जाँचें' : 'Review Your Information'}
-          </h2>
-          <p className="text-slate-500">
-            {language === 'hi'
-              ? 'कृपया केस जमा करने से पहले नीचे दी गई जानकारी जाँच लें।'
-              : 'Please check the information below before submitting your case.'}
-          </p>
+      <div className="max-w-4xl mx-auto px-6 pt-6 pb-32 space-y-6">
+        {/* Top Summary Banner */}
+        <div className="bg-[#E6FAF5] border border-[#A7F3D0] rounded-3xl p-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-primary mb-1">
+              {t('review.title')}
+            </h2>
+            <p className="text-slate-600 text-sm">
+              {t('review.subtitle')}
+            </p>
+          </div>
+          <span className="bg-white/80 text-[#0D9488] font-bold text-xs px-4 py-2 rounded-full border border-[#A7F3D0]">
+            Ready for Final Verification
+          </span>
         </div>
 
-        <div className="space-y-6">
-          
-          {/* 1. Patient Information */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 flex items-center justify-between border-b border-slate-200">
-              <div className="flex items-center gap-3 text-slate-800 font-bold text-lg">
-                <User className="w-6 h-6 text-primary" />
-                {language === 'hi' ? 'रोगी की जानकारी' : 'Patient Information'}
+        {/* 1. Patient Profile Card */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                <User className="w-5 h-5 text-blue-600" />
               </div>
-              <button 
-                onClick={() => navigate(identificationMethod === 'abha' ? '/patient/profile' : '/patient/register')}
-                className="flex items-center gap-2 text-primary font-bold hover:bg-slate-100 px-4 py-2 rounded-xl transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
-                {language === 'hi' ? 'बदलें' : 'Edit'}
-              </button>
+              <h3 className="text-lg font-bold text-slate-800">
+                {t('review.patientProfile')}
+              </h3>
             </div>
-            <div className="p-6">
-              {patient ? (
-                <div className="grid grid-cols-2 gap-4 text-slate-700">
-                  <div><span className="text-slate-500">{language === 'hi' ? 'नाम:' : 'Name:'}</span> <span className="font-bold">{patient.name}</span></div>
-                  <div><span className="text-slate-500">{language === 'hi' ? 'उम्र:' : 'Age:'}</span> <span className="font-bold">{patient.age}</span></div>
-                  <div><span className="text-slate-500">{language === 'hi' ? 'लिंग:' : 'Gender:'}</span> <span className="font-bold">{patient.gender}</span></div>
-                  <div><span className="text-slate-500">{language === 'hi' ? 'मोबाइल:' : 'Mobile:'}</span> <span className="font-bold">{maskPhone(patient.mobile)}</span></div>
-                  {patient.district && <div><span className="text-slate-500">{language === 'hi' ? 'जिला:' : 'District:'}</span> <span className="font-bold">{patient.district}</span></div>}
-                  {patient.state && <div><span className="text-slate-500">{language === 'hi' ? 'राज्य:' : 'State:'}</span> <span className="font-bold">{patient.state}</span></div>}
-                  {identificationMethod === 'abha' && abhaId && (
-                    <div className="col-span-2 mt-2 pt-2 border-t border-slate-100 flex items-center gap-2 text-[#0D9488] font-bold">
-                      <ShieldAlert className="w-4 h-4" /> 
-                      {language === 'hi' ? 'आभा लिंक:' : 'ABHA Linked:'} {maskAbha(abhaId)}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-slate-500 italic">{language === 'hi' ? 'कोई जानकारी नहीं' : 'No information provided'}</div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/patient/profile')}
+              className="flex items-center gap-1 text-sm font-bold text-[#0D9488] hover:underline"
+            >
+              <Edit2 className="w-4 h-4" /> {t('review.edit')}
+            </button>
           </div>
 
-          {/* 2. Today's Concern */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 flex items-center justify-between border-b border-slate-200">
-              <div className="flex items-center gap-3 text-slate-800 font-bold text-lg">
-                <Activity className="w-6 h-6 text-primary" />
-                {language === 'hi' ? 'आज की समस्या' : "Today's Concern"}
-              </div>
-              <button 
-                onClick={() => navigate('/patient/chief-complaint')}
-                className="flex items-center gap-2 text-primary font-bold hover:bg-slate-100 px-4 py-2 rounded-xl transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
-                {language === 'hi' ? 'बदलें' : 'Edit'}
-              </button>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-slate-400 block">{t('profile.fullName')}</span>
+              <span className="font-bold text-slate-800">{patient?.name || 'Anonymous Patient'}</span>
             </div>
-            <div className="p-6">
-              {chiefComplaint.primaryComplaint ? (
-                <div className="inline-flex items-center bg-[#E6FAF5] text-[#0D9488] px-4 py-2 rounded-xl font-bold">
-                  {chiefComplaint.primaryComplaint}
-                </div>
-              ) : (
-                <div className="text-slate-500 italic">{language === 'hi' ? 'कोई जानकारी नहीं' : 'No information provided'}</div>
-              )}
+            <div>
+              <span className="text-slate-400 block">{t('profile.age')} & {t('profile.gender')}</span>
+              <span className="font-bold text-slate-800">
+                {patient?.age ? `${patient.age} Yrs` : 'N/A'} ? {patient?.gender || 'N/A'}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 block">{t('profile.mobile')}</span>
+              <span className="font-bold text-slate-800">{patient?.mobile || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block">ID Method / ABHA</span>
+              <span className="font-mono text-slate-700">
+                {abhaId ? abhaId : identificationMethod === 'opd' ? 'OPD Slip' : 'New Registration'}
+              </span>
             </div>
           </div>
+        </div>
 
-          {/* 3. What You Told Us */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 flex items-center justify-between border-b border-slate-200">
-              <div className="flex items-center gap-3 text-slate-800 font-bold text-lg">
-                <Mic className="w-6 h-6 text-primary" />
-                {language === 'hi' ? 'आपने क्या बताया' : 'What You Told Us'}
+        {/* 2. Symptoms & Voice Intake */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#E6FAF5] flex items-center justify-center">
+                <Activity className="w-5 h-5 text-[#0D9488]" />
               </div>
-              <button 
-                onClick={() => navigate('/patient/voice')}
-                className="flex items-center gap-2 text-primary font-bold hover:bg-slate-100 px-4 py-2 rounded-xl transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
-                {language === 'hi' ? 'बदलें' : 'Edit'}
-              </button>
+              <h3 className="text-lg font-bold text-slate-800">
+                {t('review.symptomsIntake')}
+              </h3>
             </div>
-            <div className="p-6">
-              {voiceIntake.responses.length > 0 ? (
-                <div className="space-y-4">
-                  {voiceIntake.responses.map((resp, i) => (
-                    <div key={i} className="bg-slate-50 rounded-xl p-4">
-                      <p className="text-sm text-slate-500 mb-1">{language === 'hi' ? resp.questionHindi : resp.question}</p>
-                      <p className="font-bold text-slate-800">{resp.inputMethod === 'voice' ? resp.transcript : resp.selectedOption}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-slate-500 italic">{language === 'hi' ? 'कोई जानकारी नहीं' : 'No information provided'}</div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/patient/chief-complaint')}
+              className="flex items-center gap-1 text-sm font-bold text-[#0D9488] hover:underline"
+            >
+              <Edit2 className="w-4 h-4" /> {t('review.edit')}
+            </button>
           </div>
 
-          {/* 4. AYUSH Health Questions */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 flex items-center justify-between border-b border-slate-200">
-              <div className="flex items-center gap-3 text-slate-800 font-bold text-lg">
-                <HeartPulse className="w-6 h-6 text-primary" />
-                {language === 'hi' ? 'आयुष स्वास्थ्य प्रश्न' : 'AYUSH Health Questions'}
-              </div>
-              <button 
-                onClick={() => navigate('/patient/ayush')}
-                className="flex items-center gap-2 text-primary font-bold hover:bg-slate-100 px-4 py-2 rounded-xl transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
-                {language === 'hi' ? 'बदलें' : 'Edit'}
-              </button>
+          <div className="space-y-3">
+            <div>
+              <span className="text-xs font-bold text-slate-400 block">PRIMARY CHIEF COMPLAINT</span>
+              <p className="font-bold text-slate-800 text-base mt-0.5">
+                {chiefComplaint.primaryComplaint || 'General health consultation'}
+              </p>
             </div>
-            <div className="p-6">
-              {ayushIntake.responses.length > 0 ? (
-                <div className="space-y-4">
-                  {ayushIntake.responses.map((resp, i) => {
-                    const originalQ = AYUSH_QUESTIONS.find(q => q.id === resp.questionId);
-                    const qText = originalQ ? (language === 'hi' ? originalQ.questionHindi : originalQ.question) : resp.question;
-                    const aText = (language === 'hi' && resp.answerHindi) ? resp.answerHindi : resp.answer;
-                    return (
-                      <div key={i} className="bg-slate-50 rounded-xl p-4">
-                        <p className="text-sm text-slate-500 mb-1">{qText}</p>
-                        <p className="font-bold text-slate-800">{aText}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-slate-500 italic">{language === 'hi' ? 'कोई जानकारी नहीं' : 'No information provided'}</div>
-              )}
-            </div>
-          </div>
 
-          {/* 5. Medicines */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 flex items-center justify-between border-b border-slate-200">
-              <div className="flex items-center gap-3 text-slate-800 font-bold text-lg">
-                <Pill className="w-6 h-6 text-primary" />
-                {language === 'hi' ? 'दवाइयाँ' : 'Medicines'}
-              </div>
-              <button 
-                onClick={() => navigate('/patient/medications')}
-                className="flex items-center gap-2 text-primary font-bold hover:bg-slate-100 px-4 py-2 rounded-xl transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
-                {language === 'hi' ? 'बदलें' : 'Edit'}
-              </button>
-            </div>
-            <div className="p-6">
-              {medicationHistory.takingMedicines === 'yes_daily' || medicationHistory.takingMedicines === 'yes_sometimes' ? (
-                <div>
-                  <p className="font-bold text-slate-800 mb-2">
-                    {medicationHistory.takingMedicines === 'yes_daily'
-                      ? (language === 'hi' ? 'हाँ, रोज़ाना लेता/लेती हूँ' : 'Yes, taking every day')
-                      : (language === 'hi' ? 'हाँ, कभी-कभी लेता/लेती हूँ' : 'Yes, taking sometimes')}
-                  </p>
-                  {medicationHistory.medicines && (
-                    <div className="bg-slate-50 rounded-xl p-4 text-slate-700">
-                      {medicationHistory.medicines}
+            {voiceIntake.responses.length > 0 && (
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <span className="text-xs font-bold text-slate-400 block">RECORDED RESPONSES</span>
+                {voiceIntake.responses.map((resp, idx) => (
+                  <div key={idx} className="bg-slate-50 p-3 rounded-xl flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Mic className="w-4 h-4 text-[#0D9488]" />
+                      <span className="text-slate-700">{resp.transcript || resp.selectedOption}</span>
                     </div>
-                  )}
-                </div>
-              ) : medicationHistory.takingMedicines === 'no' ? (
-                <div className="text-slate-600 font-bold">{language === 'hi' ? 'कोई दवाई नहीं ले रहे हैं' : 'Not taking any medicines'}</div>
-              ) : medicationHistory.takingMedicines === 'not_sure' ? (
-                <div className="text-slate-600 font-bold">{language === 'hi' ? 'पता नहीं' : 'Not sure'}</div>
-              ) : (
-                <div className="text-slate-500 italic">{language === 'hi' ? 'कोई दवाइयों की जानकारी नहीं' : 'No medicines reported'}</div>
-              )}
-            </div>
-          </div>
-
-          {/* 6. Allergies */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 flex items-center justify-between border-b border-slate-200">
-              <div className="flex items-center gap-3 text-slate-800 font-bold text-lg">
-                <AlertTriangle className="w-6 h-6 text-primary" />
-                {language === 'hi' ? 'एलर्जी' : 'Allergies'}
-              </div>
-              <button 
-                onClick={() => navigate('/patient/allergies')}
-                className="flex items-center gap-2 text-primary font-bold hover:bg-slate-100 px-4 py-2 rounded-xl transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
-                {language === 'hi' ? 'बदलें' : 'Edit'}
-              </button>
-            </div>
-            <div className="p-6">
-              {allergyHistory.hasAllergy === 'yes' ? (
-                <div>
-                  <p className="font-bold text-slate-800 mb-2">{language === 'hi' ? 'हाँ, एलर्जी है' : 'Yes, has allergies'}</p>
-                  <div className="bg-slate-50 rounded-xl p-4 text-slate-700 grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-slate-500 text-sm">{language === 'hi' ? 'प्रकार:' : 'Type:'}</span>
-                      <p className="font-bold">{allergyHistory.allergyType}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 text-sm">{language === 'hi' ? 'प्रतिक्रिया:' : 'Reaction:'}</span>
-                      <p className="font-bold">{allergyHistory.reaction}</p>
-                    </div>
+                    {resp.isRedFlag && (
+                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">Alert</span>
+                    )}
                   </div>
-                  {allergyHistory.breathingDifficulty && (
-                    <div className="mt-4 bg-red-50 text-red-700 p-3 rounded-xl flex items-center gap-2 font-bold text-sm">
-                      <AlertTriangle className="w-5 h-5" />
-                      {language === 'hi' ? 'सांस लेने में तकलीफ (Code Yellow)' : 'Breathing difficulty (Code Yellow)'}
-                    </div>
-                  )}
-                </div>
-              ) : allergyHistory.hasAllergy === 'no' ? (
-                <div className="text-slate-600 font-bold">{language === 'hi' ? 'कोई एलर्जी नहीं' : 'No allergies reported'}</div>
-              ) : allergyHistory.hasAllergy === 'not_sure' ? (
-                <div className="text-slate-600 font-bold">{language === 'hi' ? 'पता नहीं' : 'Not sure'}</div>
-              ) : (
-                <div className="text-slate-500 italic">{language === 'hi' ? 'कोई एलर्जी की जानकारी नहीं' : 'No allergies reported'}</div>
-              )}
-            </div>
-          </div>
-
-          {/* 7. Documents */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-6 py-4 flex items-center justify-between border-b border-slate-200">
-              <div className="flex items-center gap-3 text-slate-800 font-bold text-lg">
-                <FileText className="w-6 h-6 text-primary" />
-                {language === 'hi' ? 'दस्तावेज़' : 'Documents'}
+                ))}
               </div>
-              <button 
-                onClick={() => navigate('/patient/documents/review')}
-                className="flex items-center gap-2 text-primary font-bold hover:bg-slate-100 px-4 py-2 rounded-xl transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
-                {language === 'hi' ? 'बदलें' : 'Edit'}
-              </button>
-            </div>
-            <div className="p-6">
-              {documentIntake.documents.length > 0 ? (
-                <div className="grid gap-4">
-                  {documentIntake.documents.map(doc => (
-                    <div key={doc.id} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4">
-                      <div>
-                        <h4 className="font-bold text-slate-800 text-sm">{language === 'hi' ? doc.titleHindi : doc.title}</h4>
-                        <p className="text-xs text-slate-500">{doc.fileName}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[#0D9488] text-xs font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          {doc.status === 'reviewed' ? (language === 'hi' ? 'जाँचा गया' : 'Reviewed') : (language === 'hi' ? 'स्कैन हो गया' : 'Scanned')}
-                        </span>
-                        <button
-                          onClick={() => setPreviewDoc(doc)}
-                          className="text-primary text-sm font-bold bg-white border border-slate-200 px-3 py-1 rounded-lg hover:bg-slate-100 transition-colors"
-                        >
-                          {language === 'hi' ? 'देखें' : 'View'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-slate-500 italic">{language === 'hi' ? 'कोई दस्तावेज़ नहीं जोड़ा गया' : 'No documents added'}</div>
-              )}
-            </div>
+            )}
           </div>
-
         </div>
 
-        {/* Confirmation Area */}
-        <div className="mt-12 bg-white rounded-3xl p-8 border border-[#0D9488]/30 shadow-lg text-center flex flex-col items-center">
-          <p className="text-xl font-bold text-slate-800 mb-6">
-            {language === 'hi' ? 'ऊपर दी गई जानकारी सही है इसकी पुष्टि करें।' : 'Please confirm that the information above is correct.'}
+        {/* 3. AYUSH Assessment */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <HeartPulse className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">
+                {t('review.ayushAssessment')}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/patient/ayush')}
+              className="flex items-center gap-1 text-sm font-bold text-[#0D9488] hover:underline"
+            >
+              <Edit2 className="w-4 h-4" /> {t('review.edit')}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {ayushIntake.responses.length > 0 ? (
+              ayushIntake.responses.map((r, i) => {
+                const q = AYUSH_QUESTIONS.find(q => q.id === r.questionId);
+                return (
+                  <div key={i} className="bg-slate-50 p-3 rounded-xl">
+                    <span className="text-xs text-slate-400 block truncate">{q?.question || r.question}</span>
+                    <span className="font-bold text-slate-800">{r.answerHindi || r.answer}</span>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-slate-400 col-span-2 text-sm">No assessment responses provided</p>
+            )}
+          </div>
+        </div>
+
+        {/* 4. Medications & Allergies */}
+        <div className="grid grid-cols-2 gap-6">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Pill className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-800">{t('review.medications')}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/patient/medications')}
+                className="text-xs font-bold text-[#0D9488] hover:underline"
+              >
+                {t('review.edit')}
+              </button>
+            </div>
+            <div className="text-sm">
+              <span className="text-slate-500 block">Taking Medicines:</span>
+              <span className="font-bold text-slate-800 capitalize">
+                {medicationHistory.takingMedicines?.replace('_', ' ') || 'None reported'}
+              </span>
+              {medicationHistory.medicines && (
+                <p className="text-xs bg-slate-50 p-2 rounded-lg mt-2 text-slate-700">
+                  {medicationHistory.medicines}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+                <h3 className="font-bold text-slate-800">{t('review.allergies')}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/patient/allergies')}
+                className="text-xs font-bold text-[#0D9488] hover:underline"
+              >
+                {t('review.edit')}
+              </button>
+            </div>
+            <div className="text-sm">
+              <span className="text-slate-500 block">Has Allergies:</span>
+              <span className="font-bold text-slate-800 capitalize">
+                {allergyHistory.hasAllergy || 'None reported'}
+              </span>
+              {allergyHistory.allergyType && (
+                <p className="text-xs bg-slate-50 p-2 rounded-lg mt-2 text-slate-700">
+                  {allergyHistory.allergyType} - {allergyHistory.reaction}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Documents */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-[#0D9488]" />
+              <h3 className="font-bold text-slate-800">{t('review.documentsAttached')}</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/patient/documents/review')}
+              className="text-xs font-bold text-[#0D9488] hover:underline"
+            >
+              {t('review.edit')}
+            </button>
+          </div>
+          <p className="text-sm text-slate-600">
+            {documentIntake.documents.length > 0 
+              ? `${documentIntake.documents.length} document(s) uploaded and ready for doctor review.` 
+              : 'No documents attached.'}
           </p>
+        </div>
+
+        {/* Bottom CTA Card */}
+        <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-3xl p-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <CheckCircle2 className="w-10 h-10 text-[#059669] shrink-0" />
+            <div>
+              <h4 className="text-xl font-bold text-primary">
+                {t('review.readyToSubmit')}
+              </h4>
+              <p className="text-slate-600 text-sm">
+                {t('review.readySub')}
+              </p>
+            </div>
+          </div>
+
           <button
+            type="button"
             onClick={handleConfirm}
-            className="bg-[#0D9488] text-white px-12 py-5 rounded-2xl font-bold text-2xl flex items-center gap-3 hover:bg-[#0B8070] transition-colors shadow-lg"
+            className="bg-[#064E3B] hover:bg-[#064E3B]/90 text-white px-8 py-4 rounded-2xl font-bold text-xl flex items-center gap-3 transition-colors shadow-lg"
           >
-            <CheckCircle2 className="w-8 h-8" />
-            {language === 'hi' ? 'सब सही है' : 'Everything Looks Correct'}
+            <span>{t('review.confirmAndSubmit')}</span>
+            <span>?</span>
           </button>
         </div>
-
       </div>
-
-      {/* Document Preview Modal */}
-      <Modal
-        open={previewDoc !== null}
-        onClose={() => setPreviewDoc(null)}
-        title={
-          <div className="flex items-center gap-3 text-slate-800">
-            <FileText className="w-6 h-6 text-[#0D9488]" />
-            <h3 className="font-bold text-xl">
-              {previewDoc ? (language === 'hi' ? previewDoc.titleHindi : previewDoc.title) : ''}
-            </h3>
-          </div>
-        }
-      >
-        {previewDoc && (
-          <div className="space-y-4">
-            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center">
-              DEMO PREVIEW - SYNTHETIC DATA
-            </div>
-            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 min-h-[300px] whitespace-pre-wrap font-mono text-sm text-slate-700">
-              {previewDoc.mockOcrText}
-            </div>
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setPreviewDoc(null)}
-                className="px-6 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

@@ -1,4 +1,6 @@
-import { createContext, useContext, useState } from 'react';
+import type { ClinicalCaseState, ClinicalTurnResponse, ConversationTurnRecord, ClinicalEncounterRead } from '@/services/clinical/clinicalService';
+import { finalizeClinicalEncounter } from '@/services/clinical/clinicalService';
+﻿import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export type Language = 'en' | 'hi' | 'mr';
@@ -125,9 +127,14 @@ export interface PatientDocument {
   title: string;
   titleHindi: string;
   fileName?: string;
-  status: 'scanned' | 'reviewed';
+  fileSize?: number;
+  status: 'scanned' | 'reviewed' | 'uploaded' | 'failed';
   timestamp: string;
   mockOcrText?: string;
+  file?: File;
+  backendDocId?: string;
+  storageKey?: string;
+  error?: string;
 }
 
 export interface DocumentIntakeState {
@@ -262,6 +269,20 @@ export interface PatientSessionState {
   encounterId?: string;
   queueEntryId?: string;
   tokenNumber?: number;
+
+  // Stage 4 & Stage 5: Conversational Clinical Intelligence State
+  clinicalCaseState: ClinicalCaseState | null;
+  lastClinicalTurn: ClinicalTurnResponse | null;
+  conversationHistory: ConversationTurnRecord[];
+  currentConversationTurn: number;
+  activeQuestionText?: string;
+  activeQuestionType?: string;
+  isConversationalIntakeComplete: boolean;
+
+  // Stage 6: Persistent Record & Summary State
+  finalClinicalSummary?: string;
+  isCaseFinalized?: boolean;
+  persistedCaseRecord?: ClinicalEncounterRead | null;
 }
 
 export interface PatientSessionContextType extends PatientSessionState {
@@ -336,14 +357,39 @@ export interface PatientSessionContextType extends PatientSessionState {
   setCaseAcknowledged: (acknowledged: boolean) => void;
   closeCase: () => void;
   resetCaseClosure: () => void;
+  setClinicalCaseState: (caseState: ClinicalCaseState | null) => void;
+  setLastClinicalTurn: (turn: ClinicalTurnResponse | null) => void;
+  updateClinicalCase: (turn: ClinicalTurnResponse) => void;
+  addConversationTurn: (record: ConversationTurnRecord) => void;
+  advanceConversationTurn: () => void;
+  resetConversationTurns: () => void;
+
+  // Stage 6: Finalization
+  setFinalClinicalSummary: (summary: string) => void;
+  finalizeEncounter: () => Promise<ClinicalEncounterRead | null>;
 }
 
+const getInitialLanguage = (): Language => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('medikiosk_language') as Language;
+    if (saved === 'en' || saved === 'hi' || saved === 'mr') return saved;
+  }
+  return 'en';
+};
+
+const getInitialAudioEnabled = (): boolean => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('medikiosk_audio_enabled') !== 'false';
+  }
+  return true;
+};
+
 const defaultState: PatientSessionState = {
-  language: 'en',
+  language: getInitialLanguage(),
   identificationMethod: null,
   abhaId: '',
   patient: null,
-  audioEnabled: true,
+  audioEnabled: getInitialAudioEnabled(),
   consent: { accepted: false },
   chiefComplaint: { primaryComplaint: '' },
   voiceIntake: defaultVoiceIntake,
@@ -360,6 +406,16 @@ const defaultState: PatientSessionState = {
   encounterId: undefined,
   queueEntryId: undefined,
   tokenNumber: undefined,
+  clinicalCaseState: null,
+  lastClinicalTurn: null,
+  conversationHistory: [],
+  currentConversationTurn: 1,
+  activeQuestionText: undefined,
+  activeQuestionType: undefined,
+  isConversationalIntakeComplete: false,
+  finalClinicalSummary: undefined,
+  isCaseFinalized: false,
+  persistedCaseRecord: null,
 };
 
 const PatientSessionContext = createContext<PatientSessionContextType | undefined>(undefined);
@@ -776,6 +832,107 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
       caseClosure: defaultCaseClosureState,
     }));
 
+  // ─── Stage 4: Clinical Intelligence Setters ──────────────────────────────
+  const setClinicalCaseState = (caseState: ClinicalCaseState | null) =>
+    setState(s => ({ ...s, clinicalCaseState: caseState }));
+
+  const setLastClinicalTurn = (turn: ClinicalTurnResponse | null) =>
+    setState(s => ({ ...s, lastClinicalTurn: turn }));
+
+  const updateClinicalCase = (turn: ClinicalTurnResponse) =>
+    setState(s => ({
+      ...s,
+      clinicalCaseState: turn.case_state,
+      lastClinicalTurn: turn,
+      activeQuestionText: turn.next_question_regional || turn.next_question,
+      activeQuestionType: turn.next_question_type,
+      isConversationalIntakeComplete: turn.is_case_complete,
+      chiefComplaint: turn.case_state.chief_complaint
+        ? { ...s.chiefComplaint, primaryComplaint: turn.case_state.chief_complaint }
+        : s.chiefComplaint,
+      voiceIntake: {
+        ...s.voiceIntake,
+        redFlagTriggered: s.voiceIntake.redFlagTriggered || turn.requires_emergency_attention,
+      },
+    }));
+
+  const addConversationTurn = (record: ConversationTurnRecord) =>
+    setState(s => ({
+      ...s,
+      conversationHistory: [...s.conversationHistory, record],
+    }));
+
+  const advanceConversationTurn = () =>
+    setState(s => ({
+      ...s,
+      currentConversationTurn: s.currentConversationTurn + 1,
+      voiceIntake: {
+        ...s.voiceIntake,
+        currentQuestionIndex: Math.min(s.voiceIntake.currentQuestionIndex + 1, 4),
+        activeTranscript: '',
+        activeSelectedOption: undefined,
+      },
+    }));
+
+  const resetConversationTurns = () =>
+    setState(s => ({
+      ...s,
+      conversationHistory: [],
+      currentConversationTurn: 1,
+      activeQuestionText: undefined,
+      activeQuestionType: undefined,
+      isConversationalIntakeComplete: false,
+    }));
+
+  const setFinalClinicalSummary = (summary: string) =>
+    setState(s => ({ ...s, finalClinicalSummary: summary }));
+
+  const finalizeEncounter = async (): Promise<ClinicalEncounterRead | null> => {
+    try {
+      const isEmergency =
+        state.lastClinicalTurn?.requires_emergency_attention ||
+        state.voiceIntake.redFlagTriggered ||
+        false;
+
+      const turnsPayload = state.conversationHistory.map((item, idx) => ({
+        turn_number: item.turn || idx + 1,
+        question: item.question,
+        question_type: item.question_type || 'GENERAL',
+        patient_transcript: item.patient_transcript,
+        language: item.language || state.language || 'en',
+        extracted_entities: {},
+      }));
+
+      const result = await finalizeClinicalEncounter({
+        encounter_id: state.encounterId || undefined,
+        patient_id: state.patientId || undefined,
+        case_state: state.clinicalCaseState || undefined,
+        conversation_history: turnsPayload,
+        language: state.language || 'en',
+        is_emergency: isEmergency,
+      });
+
+      setState(s => ({
+        ...s,
+        encounterId: s.encounterId || result.id,
+        finalClinicalSummary: result.final_summary,
+        persistedCaseRecord: result,
+        isCaseFinalized: true,
+        voiceIntake: {
+          ...s.voiceIntake,
+          isCompleted: true,
+          redFlagTriggered: s.voiceIntake.redFlagTriggered || result.is_emergency,
+        },
+      }));
+
+      return result;
+    } catch (err) {
+      console.error('Finalize clinical encounter failed in session provider:', err);
+      return null;
+    }
+  };
+
+
   return (
     <PatientSessionContext.Provider value={{
       ...state,
@@ -833,6 +990,14 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
       setCaseAcknowledged,
       closeCase,
       resetCaseClosure,
+      setClinicalCaseState,
+      setLastClinicalTurn,
+      updateClinicalCase,
+      addConversationTurn,
+      advanceConversationTurn,
+      resetConversationTurns,
+      setFinalClinicalSummary,
+      finalizeEncounter,
     }}>
       {children}
     </PatientSessionContext.Provider>
@@ -846,3 +1011,4 @@ export function usePatientSession() {
   }
   return context;
 }
+

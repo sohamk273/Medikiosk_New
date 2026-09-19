@@ -1,216 +1,287 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, AlertCircle, Wand2, QrCode } from 'lucide-react';
+import { QrCode, ShieldCheck, CheckCircle2, AlertCircle, Wand2, Phone, ArrowRight } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import { MockABHAProvider } from '@/services/auth/MockABHAProvider';
-import { NumericKeypad } from '@/components/kiosk/NumericKeypad';
 import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
-
+import { NumericKeypad } from '@/components/kiosk/NumericKeypad';
+import { useTranslation } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
 import { apiFetch } from '@/services/api/client';
 
 export default function Abha() {
   const navigate = useNavigate();
-  const { setAbhaId, setPatient, setPatientId, setUhid, setEncounterId } = usePatientSession();
-  
-  const [input, setInput] = useState('');
-  const [status, setStatus] = useState<'idle' | 'verifying' | 'success' | 'error'>('idle');
-  const [errorMessage, setErrorMessage] = useState('');
+  const { t } = useTranslation();
+  const { 
+    setPatient, 
+    setAbhaId, 
+    setIdentificationMethod,
+    setPatientId,
+    setUhid,
+    setEncounterId,
+    encounterId
+  } = usePatientSession();
 
-  const handleKeyPress = (key: string) => {
-    if (input.length < 14) {
-      setInput(prev => prev + key);
-      setStatus('idle');
-      setErrorMessage('');
+  const [activeTab, setActiveTab] = useState<'qr' | 'manual'>('qr');
+  const [abhaDigits, setAbhaDigits] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleKeyPress = (num: string) => {
+    if (abhaDigits.length < 14) {
+      setAbhaDigits(prev => prev + num);
     }
   };
 
   const handleBackspace = () => {
-    setInput(prev => prev.slice(0, -1));
-    setStatus('idle');
-    setErrorMessage('');
+    setAbhaDigits(prev => prev.slice(0, -1));
   };
 
   const handleClear = () => {
-    setInput('');
-    setStatus('idle');
-    setErrorMessage('');
+    setAbhaDigits('');
   };
 
-  useEffect(() => {
-    const verifyAbha = async (abha: string) => {
-      setStatus('verifying');
-      try {
-        const cleanAbha = abha.replace(/\D/g, '');
-        const patientData = await MockABHAProvider.verifyAbha(cleanAbha);
+  const formatAbhaDisplay = (digits: string) => {
+    const clean = digits.replace(/\D/g, '');
+    const parts: string[] = [];
+    if (clean.length > 0) parts.push(clean.substring(0, 2));
+    if (clean.length > 2) parts.push(clean.substring(2, 6));
+    if (clean.length > 6) parts.push(clean.substring(6, 10));
+    if (clean.length > 10) parts.push(clean.substring(10, 14));
+    return parts.join('-');
+  };
 
-        // Query or register patient in backend
-        let backendPatient: any;
-        try {
-          backendPatient = await apiFetch<any>(`/patients/search?abha=${cleanAbha}`);
-        } catch (e: any) {
-          if (e.status === 404) {
-            backendPatient = await apiFetch<any>('/patients', {
-              method: 'POST',
-              body: JSON.stringify({
-                full_name: patientData.name,
-                age: parseInt(patientData.age) || 30,
-                gender: patientData.gender,
-                city: patientData.district || 'Pune',
-                state: patientData.state || 'Maharashtra',
-                identities: [
-                  { identity_type: 'ABHA', identity_value: cleanAbha, is_verified: true },
-                  { identity_type: 'MOBILE', identity_value: patientData.mobile, is_verified: true }
-                ]
-              }),
-            });
-          } else {
-            throw e;
-          }
-        }
+  const verifyAndProceed = async (idToVerify: string, demoPatient?: any) => {
+    setIsVerifying(true);
+    setError(null);
 
-        // Create clinical encounter on backend
-        const encounter = await apiFetch<any>('/encounters', {
-          method: 'POST',
-          body: JSON.stringify({ patient_id: backendPatient.id, priority: 'NORMAL' }),
-        });
-
-        setStatus('success');
-        setAbhaId(abha);
-        setPatient(patientData);
-        setPatientId(backendPatient.id);
-        setUhid(backendPatient.patient_uhid || backendPatient.uhid);
-        setEncounterId(encounter.id);
-        
-        // Auto-navigate after success
-        setTimeout(() => {
-          navigate('/patient/consent');
-        }, 1500);
-      } catch (err: any) {
-        setStatus('error');
-        setErrorMessage(err.message || 'Verification failed. Please check your ABHA Number.');
-      }
+    const pat = demoPatient || {
+      name: 'Rameshwar Patil',
+      age: '62',
+      gender: 'Male',
+      mobile: '9823199011',
+      district: 'Pune',
+      state: 'Maharashtra',
     };
 
-    if (input.length === 14 && status === 'idle') {
-      verifyAbha(input);
-    }
-  }, [input, status, navigate, setAbhaId, setPatient, setPatientId, setUhid, setEncounterId]);
+    const rawAbha = idToVerify || '91-2834-9201-4412';
+    setAbhaId(rawAbha);
+    setIdentificationMethod('abha');
+    setPatient(pat);
 
-  // Format ABHA as XX-XXXX-XXXX-XXXX for display
-  const formatAbha = (raw: string) => {
-    const padded = raw.padEnd(14, '-');
-    return `${padded.slice(0, 2)}-${padded.slice(2, 6)}-${padded.slice(6, 10)}-${padded.slice(10, 14)}`;
+    try {
+      let patientData: any = null;
+      try {
+        patientData = await apiFetch<any>(
+          `/patients/search?identity_type=ABHA&identity_value=${encodeURIComponent(rawAbha)}`
+        );
+      } catch (err: any) {
+        if (err.status === 404) {
+          patientData = await apiFetch<any>('/patients', {
+            method: 'POST',
+            body: JSON.stringify({
+              full_name: pat.name,
+              age: parseInt(pat.age, 10) || 30,
+              gender: pat.gender.toLowerCase(),
+            }),
+          });
+
+          await apiFetch(`/patients/${patientData.id}/identities`, {
+            method: 'POST',
+            body: JSON.stringify({
+              identity_type: 'ABHA',
+              identity_value: rawAbha,
+              is_verified: true,
+            }),
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      if (patientData && patientData.id) {
+        setPatientId(patientData.id);
+        setUhid(patientData.uhid || patientData.patient_uhid);
+
+        let activeEncounterId = encounterId;
+        if (!activeEncounterId) {
+          const encRes = await apiFetch<any>('/encounters', {
+            method: 'POST',
+            body: JSON.stringify({
+              patient_id: patientData.id,
+              priority: 'NORMAL',
+            }),
+          });
+          activeEncounterId = encRes.id;
+          setEncounterId(encRes.id);
+        }
+      }
+
+      navigate('/patient/consent');
+    } catch (err: any) {
+      console.warn('Backend unavailable, continuing in offline mock mode:', err);
+      const offlinePatId = 'pat-abha-offline-' + Date.now();
+      const offlineUhid = 'UHID-MH-' + Math.floor(100000 + Math.random() * 900000);
+      setPatientId(offlinePatId);
+      setUhid(offlineUhid);
+      if (!encounterId) {
+        setEncounterId('enc-offline-' + Date.now());
+      }
+      navigate('/patient/consent');
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
+  const handleSimulateQrScan = () => {
+    verifyAndProceed('91-2834-9201-4412', {
+      name: 'Rameshwar Patil',
+      age: '62',
+      gender: 'Male',
+      mobile: '9823199011',
+      district: 'Pune',
+      state: 'Maharashtra',
+    });
+  };
+
+  const handleManualSubmit = () => {
+    if (abhaDigits.length !== 14) {
+      setError('Please enter a valid 14-digit ABHA number');
+      return;
+    }
+    verifyAndProceed(formatAbhaDisplay(abhaDigits));
+  };
+
+  useKioskScreen({
+    onContinue: activeTab === 'qr' ? handleSimulateQrScan : handleManualSubmit,
+    onBack: () => navigate('/patient/identify'),
+    isContinueDisabled: isVerifying,
+    audioPrompt: t('abha.audioGuidance') || 'Please scan your ABHA QR card or type your 14 digit ABHA number.',
+  });
+
   return (
-    <div className="w-full max-w-7xl mx-auto pt-6 px-4">
-      <div className="flex items-center justify-between mb-6 border-b border-slate-200 pb-4">
-        <h2 className="text-3xl font-bold text-primary">
-          ABHA Authentication / <span className="font-devanagari">आभा पहचान सत्यापन</span>
+    <div className="w-full max-w-7xl mx-auto pt-6 px-4 pb-32">
+      <div className="mb-4">
+        <h2 className="text-4xl font-bold text-primary mb-2 font-devanagari">
+          {t('abha.title')}
         </h2>
-        <div className="bg-mint text-primary px-4 py-1.5 rounded-full text-sm font-bold shadow-sm">
-          Simulated ABDM Sandbox v3.1
-        </div>
+        <p className="text-lg text-slate-600">
+          {t('abha.subtitle')}
+        </p>
       </div>
 
-      <p className="text-lg text-slate-600 mb-6">
-        Scan your physical ABHA card QR code, or enter your 14-digit ABHA ID using the large touch keypad below.
-      </p>
-
       <AudioGuidanceBanner 
-        englishText="Audio prompt playing in Hindi & English (Tap right to pause or switch language)"
-        regionalText="बोलकर बताएं या कार्ड दिखाएं — सहायता के लिए नीचे 'Call Sahayak' दबाएं"
+        englishText="Audio prompt: Please hold your ABHA QR card in front of the scanner, or type your 14-digit number."
+        regionalText="सुनने के लिए टैप करें: कृपया अपने आभा क्यूआर कार्ड को स्कैनर के सामने रखें या 14 अंकों का नंबर दर्ज करें।"
       />
 
-      <div className="grid grid-cols-2 gap-8 mt-8">
-        {/* Left Side: Scanner */}
-        <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col h-full min-h-[550px]">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-bold text-primary flex items-center gap-2">
-              <span className="text-sm font-bold text-slate-400">METHOD 1 • त्वरित स्कैन</span><br/>
-              Scan ABHA QR Code
-            </h3>
-            <span className="bg-secondary text-primary px-3 py-1 rounded-full text-xs font-bold">Recommended</span>
-          </div>
-          
-          <div className="flex-1 bg-slate-800 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden group">
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20 mix-blend-overlay"></div>
-            
-            <div className="w-48 h-48 border-4 border-emerald-400/50 rounded-3xl relative flex items-center justify-center bg-white/5 backdrop-blur-sm z-10">
-              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-emerald-400 rounded-tl-2xl -m-1"></div>
-              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-emerald-400 rounded-tr-2xl -m-1"></div>
-              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-emerald-400 rounded-bl-2xl -m-1"></div>
-              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-emerald-400 rounded-br-2xl -m-1"></div>
-              <QrCode className="w-24 h-24 text-white opacity-80" />
+      <div className="grid grid-cols-12 gap-8 mt-6">
+        {/* Left: Interactive Tabs & Scan */}
+        <div className="col-span-7 flex flex-col gap-6">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+            <div className="flex gap-4 p-1.5 bg-slate-100 rounded-2xl mb-6">
+              <button
+                type="button"
+                onClick={() => setActiveTab('qr')}
+                className={`flex-1 py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${
+                  activeTab === 'qr'
+                    ? 'bg-white text-primary shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <QrCode className="w-5 h-5" />
+                {t('abha.scanQrTab')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('manual')}
+                className={`flex-1 py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${
+                  activeTab === 'manual'
+                    ? 'bg-white text-primary shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Phone className="w-5 h-5" />
+                {t('abha.manualTab')}
+              </button>
             </div>
-            
-            <p className="text-white mt-8 text-lg font-medium z-10">Hold card 15cm from camera lens below</p>
-            <p className="text-white/60 font-devanagari text-sm z-10">कैमरे के सामने अपना आभा कार्ड या मोबाइल क्यूआर रखें</p>
-            
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 animate-[scan_2s_ease-in-out_infinite]">
-              <div className="absolute inset-0 bg-emerald-400 shadow-[0_0_20px_4px_rgba(52,211,153,0.5)]"></div>
-            </div>
+
+            {activeTab === 'qr' ? (
+              <div className="flex flex-col items-center py-6 text-center">
+                <div className="relative w-64 h-64 border-4 border-dashed border-[#0D9488] rounded-3xl flex items-center justify-center bg-[#E6FAF5]/40 mb-6 group cursor-pointer" onClick={handleSimulateQrScan}>
+                  <QrCode className="w-32 h-32 text-[#0D9488] opacity-80 group-hover:scale-105 transition-transform" />
+                  <div className="absolute inset-x-4 top-1/2 h-1 bg-[#0D9488] shadow-[0_0_12px_#0D9488] animate-pulse" />
+                </div>
+                <h3 className="text-2xl font-bold text-primary mb-2">
+                  {t('abha.holdQr')}
+                </h3>
+                <p className="text-slate-500 text-sm max-w-sm mb-6">
+                  {t('abha.qrInstructions')}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleSimulateQrScan}
+                  disabled={isVerifying}
+                  className="bg-[#064E3B] hover:bg-[#064E3B]/90 text-white px-8 py-4 rounded-2xl font-bold text-lg flex items-center gap-3 transition-colors shadow-md"
+                >
+                  <Wand2 className="w-5 h-5" />
+                  {isVerifying ? t('abha.verifying') : t('abha.simulateScan')}
+                </button>
+              </div>
+            ) : (
+              <div className="py-4">
+                <label className="text-lg font-bold text-primary mb-3 block">
+                  {t('abha.enter14Digit')}
+                </label>
+                <div className="w-full text-3xl font-mono font-bold tracking-widest h-16 bg-slate-50 border-2 border-slate-200 rounded-2xl px-4 flex items-center justify-center text-primary mb-4">
+                  {formatAbhaDisplay(abhaDigits) || 'XX-XXXX-XXXX-XXXX'}
+                </div>
+
+                {error && (
+                  <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2 text-sm font-bold">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleManualSubmit}
+                  disabled={abhaDigits.length !== 14 || isVerifying}
+                  className="w-full bg-[#064E3B] hover:bg-[#064E3B]/90 text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                >
+                  <span>{isVerifying ? t('abha.verifying') : t('abha.verifyAndContinue')}</span>
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              </div>
+            )}
           </div>
-          
-          <button className="mt-6 w-full bg-primary hover:bg-primary/90 text-white py-4 rounded-2xl text-xl font-bold shadow-md flex items-center justify-center gap-3 transition-colors">
-            <Camera className="w-6 h-6" />
-            Tap to Activate Scanner / स्कैन शुरू करें
-          </button>
         </div>
 
-        {/* Right Side: Keypad Input */}
-        <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col h-full min-h-[550px]">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-bold text-primary">
-              <span className="text-sm font-bold text-slate-400">METHOD 2 • संख्या दर्ज करें</span><br/>
-              Enter 14-Digit ABHA
-            </h3>
-            
-            <button 
-              onClick={() => { setInput('91440299821049'); setStatus('idle'); }}
-              className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 transition-colors"
-            >
-              <Wand2 className="w-4 h-4" />
-              Demo Fill
-            </button>
-          </div>
-          
-          <div className={`w-full p-6 rounded-2xl border-2 mb-6 flex flex-col items-center transition-colors ${
-            status === 'error' ? 'bg-red-50 border-red-200' :
-            status === 'success' ? 'bg-green-50 border-green-400' :
-            'bg-slate-50 border-slate-200'
-          }`}>
-            <span className="text-xs font-bold text-slate-400 tracking-wider mb-2 uppercase">Ayushman Health Account Number</span>
-            <div className={`text-4xl font-mono font-bold tracking-[0.2em] h-12 flex items-center justify-center ${
-              status === 'error' ? 'text-red-600' :
-              status === 'success' ? 'text-green-700' :
-              'text-slate-800'
-            }`}>
-              {formatAbha(input)}
+        {/* Right: Keypad & ABHA Info */}
+        <div className="col-span-5 flex flex-col gap-6">
+          {activeTab === 'manual' && (
+            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+              <NumericKeypad 
+                onKeyPress={handleKeyPress}
+                onBackspace={handleBackspace}
+                onClear={handleClear}
+              />
             </div>
-            
-            <div className="mt-4 w-full flex justify-between items-center text-sm font-semibold">
-              <span className={`flex items-center gap-1 ${
-                status === 'error' ? 'text-red-500' :
-                status === 'success' ? 'text-green-600' :
-                'text-primary'
-              }`}>
-                {status === 'verifying' && <span className="animate-pulse">Verifying via ABDM Sandbox...</span>}
-                {status === 'success' && '✓ Verification Successful'}
-                {status === 'error' && <><AlertCircle className="w-4 h-4" /> {errorMessage}</>}
-                {status === 'idle' && 'Secure Aadhaar Vault Connected'}
-              </span>
-              <span className="text-slate-400">{input.length} / 14 Digits Entered</span>
+          )}
+
+          <div className="bg-[#EFF6FF] rounded-3xl p-6 border border-[#BFDBFE] shadow-sm">
+            <div className="flex items-center gap-3 mb-3 text-[#1E40AF]">
+              <ShieldCheck className="w-7 h-7" />
+              <h3 className="font-bold text-lg">Ayushman Bharat Digital Mission</h3>
             </div>
-          </div>
-          
-          <div className="flex-1 flex flex-col justify-end pt-4">
-            <NumericKeypad 
-              onKeyPress={handleKeyPress} 
-              onBackspace={handleBackspace} 
-              onClear={handleClear}
-              disabled={status === 'verifying' || status === 'success'}
-            />
+            <p className="text-slate-700 text-sm leading-relaxed mb-4">
+              Your ABHA card securely fetches your health record for OPD consultation without manual data entry.
+            </p>
+            <div className="flex items-center gap-2 text-xs text-[#1E40AF] font-bold">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>National Health Authority (NHA) Compliant</span>
+            </div>
           </div>
         </div>
       </div>

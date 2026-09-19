@@ -1,70 +1,120 @@
-import { Globe2 } from 'lucide-react';
-
+import { useNavigate } from 'react-router-dom';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import { SelectionCard } from '@/components/kiosk/SelectionCard';
+import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
+import { useTranslation } from '@/i18n';
+import type { Language as LangType } from '@/i18n';
+import { useKioskScreen } from '@/context/KioskScreenContext';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
+
+interface LanguageOption {
+  code: LangType;
+  name: string;
+  nativeName: string;
+  subtext: string;
+  badge: string;
+}
+
+const LANGUAGES: LanguageOption[] = [
+  {
+    code: 'en',
+    name: 'English',
+    nativeName: 'English',
+    subtext: 'Speak and read in English throughout your visit',
+    badge: 'Standard',
+  },
+  {
+    code: 'hi',
+    name: 'Hindi',
+    nativeName: 'हिन्दी',
+    subtext: 'अपनी भाषा में स्वास्थ्य जानकारी दर्ज करें',
+    badge: 'लोकप्रिय / Popular',
+  },
+  {
+    code: 'mr',
+    name: 'Marathi',
+    nativeName: 'मराठी',
+    subtext: 'तुमच्या भाषेत आरोग्य माहिती प्रविष्ट करा',
+    badge: 'प्रादेशिक / Regional',
+  },
+];
 
 export default function Language() {
+  const navigate = useNavigate();
   const { language, setLanguage } = usePatientSession();
+  const { t } = useTranslation();
+
+  const handleSelectLanguage = (code: LangType) => {
+    setLanguage(code);
+    navigate('/patient/identify');
+  };
+
+  useKioskScreen({
+    onContinue: () => navigate('/patient/identify'),
+    onBack: () => navigate('/patient'),
+    audioPrompt: t('language.audioGuidance') || 'Please choose your preferred language for this registration.',
+  });
 
   return (
-    <div className="w-full max-w-5xl mx-auto pt-8">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm">
-          1
-        </div>
-        <h2 className="text-2xl font-bold text-foreground">
-          Select Language / भाषा का चयन करें / भाषा निवडा
+    <div className="w-full max-w-5xl mx-auto pt-8 px-6 pb-24 flex flex-col items-center">
+      <div className="text-center mb-6">
+        <h2 className="text-4xl font-black text-primary tracking-tight mb-2 font-devanagari">
+          {t('language.title')}
         </h2>
-        <span className="ml-auto text-sm text-slate-500 font-medium">Tap any card to set interface</span>
+        <p className="text-lg text-slate-600 font-medium">
+          {t('language.subtitle')}
+        </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 mb-8">
-        <SelectionCard
-          icon={<Globe2 className="w-6 h-6" />}
-          title="English"
-          subtitle="Continue in English for intake"
-          badge="STANDARD"
-          selected={language === 'en'}
-          onClick={() => {
-            setLanguage('en');
-          }}
-        />
-        <SelectionCard
-          icon={<Globe2 className="w-6 h-6" />}
-          title="Hindi"
-          regionalTitle="हिन्दी"
-          subtitle="आसान बोलचाल की भाषा में जानकारी भरें"
-          badge="प्राथमिक / RECOMMENDED"
-          selected={language === 'hi'}
-          onClick={() => {
-            setLanguage('hi');
-          }}
-        />
-        <SelectionCard
-          icon={<Globe2 className="w-6 h-6" />}
-          title="Marathi"
-          regionalTitle="मराठी"
-          subtitle="मराठी भाषेत जलद नोंदणी करा"
-          badge="स्थानिक / REGIONAL"
-          selected={language === 'mr'}
-          onClick={() => {
-            setLanguage('mr');
-          }}
+      <div className="w-full max-w-3xl mb-8">
+        <AudioGuidanceBanner 
+          englishText="Audio prompt: Please select your preferred language."
+          regionalText="कृपया आपली भाषा निवडा / कृपया अपनी भाषा चुनें।"
         />
       </div>
 
-      <div className="bg-slate-50 rounded-2xl p-4 flex items-center justify-between border border-slate-100">
-        <div className="flex items-center gap-2 text-slate-600 font-medium text-sm">
-          <Globe2 className="w-4 h-4" />
-          Other National Languages / अन्य भाषाएँ:
-        </div>
-        <div className="flex gap-2">
-          {['বাংলা (Bengali)', 'தமிழ் (Tamil)', 'తెలుగు (Telugu)', 'ગુજરાતી (Gujarati)', 'ಕನ್ನಡ (Kannada)'].map((lang) => (
-            <button key={lang} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
-              {lang}
+      {/* Language Selection Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+        {LANGUAGES.map((lang) => {
+          const isSelected = language === lang.code;
+          return (
+            <button
+              key={lang.code}
+              type="button"
+              onClick={() => handleSelectLanguage(lang.code)}
+              className={`relative flex flex-col justify-between p-8 rounded-3xl border-2 transition-all duration-200 text-left min-h-[260px] shadow-sm hover:shadow-md ${
+                isSelected
+                  ? 'border-[#064E3B] bg-emerald-50/50 shadow-emerald-950/10'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="flex justify-between items-start">
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                  isSelected ? 'bg-[#064E3B] text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {lang.badge}
+                </span>
+                {isSelected && (
+                  <CheckCircle2 className="w-6 h-6 text-[#064E3B]" />
+                )}
+              </div>
+
+              <div>
+                <h3 className="text-3xl font-bold text-primary font-devanagari mb-1">
+                  {lang.nativeName}
+                </h3>
+                <p className="text-sm font-bold text-slate-500 mb-3">{lang.name}</p>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed font-devanagari">
+                  {lang.subtext}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 text-sm font-bold text-[#064E3B] mt-4 pt-4 border-t border-slate-100">
+                <span>{t('language.selectAndContinue')}</span>
+                <ArrowRight className="w-4 h-4" />
+              </div>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
