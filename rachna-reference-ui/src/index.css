@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    touch-action: manipulation;
+  }
+
+  /* High legibility defaults */
+  body {
+    color: #0f172a; /* Deep Navy */
+    background-color: #f4f8fc;
+  }
+}
+
+@layer components {
+  /* Soft Glassmorphism Panel */
+  .glass-card {
+    background-color: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1.5px solid rgba(255, 255, 255, 0.85);
+    box-shadow: 0 10px 30px -5px rgba(30, 58, 138, 0.07), 0 4px 12px -2px rgba(37, 99, 235, 0.04);
+  }
+
+  .glass-card-interactive {
+    background-color: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 10px 30px -5px rgba(30, 58, 138, 0.08), 0 4px 12px -2px rgba(37, 99, 235, 0.04);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .glass-card-interactive:hover {
+    background-color: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 16px 36px -4px rgba(30, 58, 138, 0.12), 0 6px 16px -2px rgba(37, 99, 235, 0.08);
+    transform: translateY(-2px);
+  }
+
+  .glass-card-interactive:active {
+    transform: scale(0.985);
+    box-shadow: 0 4px 14px -2px rgba(30, 58, 138, 0.1);
+  }
+
+  /* Soft Neumorphic & Glass Pill Button */
+  .kiosk-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    user-select: none;
+    transition: all 0.18s ease-in-out;
+    outline: none;
+  }
+
+  .kiosk-btn:focus-visible {
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.35);
+  }
+
+  /* Kiosk Touch Targets */
+  .touch-target-lg {
+    min-height: 80px;
+    min-width: 80px;
+  }
+
+  .touch-target-md {
+    min-height: 64px;
+    min-width: 64px;
+  }
+}
+
+/* Custom subtle scrollbar if needed */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.2);
+  border-radius: 9999px;
+}
