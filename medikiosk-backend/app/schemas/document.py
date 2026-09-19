@@ -21,6 +21,15 @@ class DocumentCreate(DocumentBase):
     pass
 
 
+class DocumentAttach(DocumentBase):
+    """Schema for registering an existing MinIO object uploaded via the Kiosk Upload Module."""
+    storage_key: str = Field(..., description="MinIO object storage key")
+    file_name: str = Field(..., description="Original file name")
+    content_type: str = Field(..., description="MIME content type")
+    file_size: int = Field(..., description="File size in bytes")
+    bucket: Optional[str] = Field(default="kiosk-uploads", description="MinIO bucket name")
+
+
 class DocumentRead(DocumentBase):
     """Document metadata read representation returned to clients."""
     model_config = ConfigDict(from_attributes=True)

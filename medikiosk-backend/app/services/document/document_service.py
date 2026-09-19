@@ -254,3 +254,73 @@ async def delete_document(
     await db.delete(document)
     await db.commit()
     return True
+
+
+async def attach_document_reference(
+    db: AsyncSession,
+    encounter_id: Union[uuid.UUID, str],
+    storage_key: str,
+    file_name: str,
+    content_type: str,
+    file_size: int,
+    document_type: Optional[str] = None,
+    bucket: Optional[str] = "kiosk-uploads",
+) -> Document:
+    """Registers an externally uploaded document (e.g. from Kiosk Upload Module) into Medikiosk.
+    
+    Persists document metadata in PostgreSQL linking it to the encounter and patient.
+    Does NOT delete the MinIO object on error, ensuring idempotent retry.
+    """
+    enc_uuid = parse_uuid(encounter_id, "encounter_id")
+
+    # 1. Validate encounter exists in database & resolve patient_id
+    result = await db.execute(select(Encounter).where(Encounter.id == enc_uuid))
+    encounter = result.scalar_one_or_none()
+    if not encounter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Encounter '{enc_uuid}' not found.",
+        )
+
+    patient_id = encounter.patient_id
+
+    # 2. Normalize and construct storage reference
+    clean_bucket = (bucket or "kiosk-uploads").strip()
+    clean_key = storage_key.strip()
+    if clean_bucket and not clean_key.startswith(f"{clean_bucket}/"):
+        full_storage_key = f"{clean_bucket}/{clean_key}"
+    else:
+        full_storage_key = clean_key
+
+    clean_name = sanitize_filename(file_name) if file_name else "uploaded_document"
+    normalized_doc_type = document_type.strip().upper() if document_type and document_type.strip() else None
+
+    # 3. Create Document record
+    doc_uuid = uuid.uuid4()
+    document = Document(
+        id=doc_uuid,
+        patient_id=patient_id,
+        encounter_id=enc_uuid,
+        file_name=clean_name,
+        content_type=content_type or "application/octet-stream",
+        file_size=file_size,
+        storage_key=full_storage_key,
+        document_type=normalized_doc_type,
+        processing_status="UPLOADED",
+    )
+    db.add(document)
+
+    try:
+        await db.commit()
+        await db.refresh(document)
+    except Exception as db_err:
+        await db.rollback()
+        logger.error("PostgreSQL metadata creation failed during document attach: %s", db_err)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to attach document metadata: {str(db_err)}",
+        )
+
+    logger.info("Successfully attached document %s to encounter %s (storage: %s)", doc_uuid, enc_uuid, full_storage_key)
+    return document
+

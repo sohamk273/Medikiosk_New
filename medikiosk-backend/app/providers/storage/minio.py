@@ -82,13 +82,23 @@ class MinIOStorageProvider(StorageProvider):
             return object_name[len(bucket) + 1 :]
         return object_name
 
+    def _split_bucket_and_key(self, object_name: str, bucket_name: Optional[str] = None) -> tuple[str, str]:
+        if bucket_name:
+            bucket = bucket_name
+            clean_key = self._clean_object_name(object_name, bucket)
+            return bucket, clean_key
+        if object_name.startswith("kiosk-uploads/"):
+            return "kiosk-uploads", object_name[len("kiosk-uploads/"):]
+        if object_name.startswith(f"{self.default_bucket}/"):
+            return self.default_bucket, object_name[len(f"{self.default_bucket}/"):]
+        return self.default_bucket, object_name
+
     def download_file(
         self,
         object_name: str,
         bucket_name: Optional[str] = None,
     ) -> bytes:
-        bucket = self._resolve_bucket(bucket_name)
-        cleaned_name = self._clean_object_name(object_name, bucket)
+        bucket, cleaned_name = self._split_bucket_and_key(object_name, bucket_name)
         response = None
         try:
             response = self._client.get_object(bucket, cleaned_name)
@@ -106,8 +116,7 @@ class MinIOStorageProvider(StorageProvider):
         object_name: str,
         bucket_name: Optional[str] = None,
     ) -> bool:
-        bucket = self._resolve_bucket(bucket_name)
-        cleaned_name = self._clean_object_name(object_name, bucket)
+        bucket, cleaned_name = self._split_bucket_and_key(object_name, bucket_name)
         try:
             self._client.remove_object(bucket, cleaned_name)
             return True
@@ -121,8 +130,7 @@ class MinIOStorageProvider(StorageProvider):
         expires_seconds: int = 900,
         bucket_name: Optional[str] = None,
     ) -> str:
-        bucket = self._resolve_bucket(bucket_name)
-        cleaned_name = self._clean_object_name(object_name, bucket)
+        bucket, cleaned_name = self._split_bucket_and_key(object_name, bucket_name)
         try:
             return self._client.presigned_get_object(
                 bucket_name=bucket,

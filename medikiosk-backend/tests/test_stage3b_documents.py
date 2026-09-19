@@ -335,3 +335,49 @@ async def test_document_deletion_removes_storage_and_metadata(client: AsyncClien
 
     # Verify MinIO object is gone
     assert cleaned_key not in fake_storage._storage
+
+
+@pytest.mark.asyncio
+async def test_attach_kiosk_document_success(client: AsyncClient, db_session: AsyncSession):
+    """Test 19: Kiosk upload module document attachment registers metadata in PostgreSQL."""
+    patient, encounter = await setup_patient_and_encounter(db_session)
+
+    attach_payload = {
+        "storage_key": "uploads/2026/09/19/test_session/rx_photo.jpg",
+        "file_name": "rx_photo.jpg",
+        "content_type": "image/jpeg",
+        "file_size": 204850,
+        "document_type": "PRESCRIPTION",
+        "bucket": "kiosk-uploads",
+    }
+
+    res = await client.post(f"/api/v1/encounters/{encounter.id}/documents/attach", json=attach_payload)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["file_name"] == "rx_photo.jpg"
+    assert data["content_type"] == "image/jpeg"
+    assert data["document_type"] == "PRESCRIPTION"
+    assert data["storage_key"] == "kiosk-uploads/uploads/2026/09/19/test_session/rx_photo.jpg"
+    assert data["encounter_id"] == str(encounter.id)
+    assert data["patient_id"] == str(patient.id)
+
+    # Verify persisted in DB
+    result = await db_session.execute(select(Document).where(Document.id == uuid.UUID(data["id"])))
+    doc = result.scalar_one_or_none()
+    assert doc is not None
+    assert doc.document_type == "PRESCRIPTION"
+
+
+@pytest.mark.asyncio
+async def test_attach_kiosk_document_invalid_encounter(client: AsyncClient):
+    """Test 20: Attach with invalid encounter ID returns 404."""
+    fake_id = uuid.uuid4()
+    attach_payload = {
+        "storage_key": "uploads/2026/09/19/test/file.jpg",
+        "file_name": "file.jpg",
+        "content_type": "image/jpeg",
+        "file_size": 1024,
+    }
+    res = await client.post(f"/api/v1/encounters/{fake_id}/documents/attach", json=attach_payload)
+    assert res.status_code == 404
+

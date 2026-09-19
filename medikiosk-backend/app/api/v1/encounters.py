@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.schemas.consent import ConsentCreate, ConsentRead
 from app.schemas.consultation import ConsultationCreate, ConsultationRead
-from app.schemas.document import DocumentRead
+from app.schemas.document import DocumentAttach, DocumentRead
 from app.schemas.encounter import (
     EncounterCreate,
     EncounterRead,
@@ -25,6 +25,7 @@ from app.services.consultation.consultation_service import (
 )
 from app.services.document.document_service import (
     upload_document,
+    attach_document_reference,
     list_documents_by_encounter,
 )
 from app.services.encounter.encounter_service import (
@@ -202,6 +203,31 @@ async def upload_encounter_document(
         file=file,
         document_type=document_type,
         storage_service=storage,
+    )
+    return DocumentRead.model_validate(document)
+
+
+@router.post(
+    "/{encounter_id}/documents/attach",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach an externally uploaded document reference to an encounter",
+)
+async def attach_encounter_document(
+    encounter_id: str,
+    payload: DocumentAttach,
+    db: AsyncSession = Depends(get_db),
+) -> DocumentRead:
+    """Registers a document already uploaded to object storage (e.g. via Kiosk Upload Module)."""
+    document = await attach_document_reference(
+        db=db,
+        encounter_id=encounter_id,
+        storage_key=payload.storage_key,
+        file_name=payload.file_name,
+        content_type=payload.content_type,
+        file_size=payload.file_size,
+        document_type=payload.document_type,
+        bucket=payload.bucket,
     )
     return DocumentRead.model_validate(document)
 
