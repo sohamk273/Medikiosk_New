@@ -1,4 +1,4 @@
-"""MinIO implementation of StorageProvider."""
+﻿"""MinIO implementation of StorageProvider."""
 from datetime import timedelta
 from typing import BinaryIO, Optional
 from minio import Minio
@@ -40,6 +40,19 @@ class MinIOStorageProvider(StorageProvider):
     def _resolve_bucket(self, bucket_name: Optional[str]) -> str:
         return bucket_name or self.default_bucket
 
+    def _resolve_bucket_and_key(self, object_name: str, bucket_name: Optional[str] = None) -> tuple[str, str]:
+        if bucket_name:
+            bucket = bucket_name
+            cleaned = object_name[len(bucket) + 1:] if object_name.startswith(f"{bucket}/") else object_name
+            return bucket, cleaned
+
+        if "/" in object_name:
+            prefix, rest = object_name.split("/", 1)
+            if prefix in [self.default_bucket, "kiosk-uploads", "medikiosk-documents", "medikiosk"]:
+                return prefix, rest
+
+        return self.default_bucket, object_name
+
     def ensure_bucket_exists(self, bucket_name: Optional[str] = None) -> bool:
         bucket = self._resolve_bucket(bucket_name)
         try:
@@ -59,36 +72,30 @@ class MinIOStorageProvider(StorageProvider):
         content_type: str = "application/octet-stream",
         bucket_name: Optional[str] = None,
     ) -> str:
-        bucket = self._resolve_bucket(bucket_name)
+        bucket, cleaned_name = self._resolve_bucket_and_key(object_name, bucket_name)
         self.ensure_bucket_exists(bucket)
         try:
             self._client.put_object(
                 bucket_name=bucket,
-                object_name=object_name,
+                object_name=cleaned_name,
                 data=data,
                 length=length,
                 content_type=content_type,
             )
-            return f"{bucket}/{object_name}"
+            return f"{bucket}/{cleaned_name}"
         except S3Error as e:
-            logger.error("MinIO S3 error uploading %s: %s", object_name, e)
+            logger.error("MinIO S3 error uploading %s: %s", cleaned_name, e)
             raise
         except Exception as e:
-            logger.error("Unexpected error uploading %s: %s", object_name, e)
+            logger.error("Unexpected error uploading %s: %s", cleaned_name, e)
             raise
-
-    def _clean_object_name(self, object_name: str, bucket: str) -> str:
-        if object_name.startswith(f"{bucket}/"):
-            return object_name[len(bucket) + 1 :]
-        return object_name
 
     def download_file(
         self,
         object_name: str,
         bucket_name: Optional[str] = None,
     ) -> bytes:
-        bucket = self._resolve_bucket(bucket_name)
-        cleaned_name = self._clean_object_name(object_name, bucket)
+        bucket, cleaned_name = self._resolve_bucket_and_key(object_name, bucket_name)
         response = None
         try:
             response = self._client.get_object(bucket, cleaned_name)
@@ -106,8 +113,7 @@ class MinIOStorageProvider(StorageProvider):
         object_name: str,
         bucket_name: Optional[str] = None,
     ) -> bool:
-        bucket = self._resolve_bucket(bucket_name)
-        cleaned_name = self._clean_object_name(object_name, bucket)
+        bucket, cleaned_name = self._resolve_bucket_and_key(object_name, bucket_name)
         try:
             self._client.remove_object(bucket, cleaned_name)
             return True
@@ -121,8 +127,7 @@ class MinIOStorageProvider(StorageProvider):
         expires_seconds: int = 900,
         bucket_name: Optional[str] = None,
     ) -> str:
-        bucket = self._resolve_bucket(bucket_name)
-        cleaned_name = self._clean_object_name(object_name, bucket)
+        bucket, cleaned_name = self._resolve_bucket_and_key(object_name, bucket_name)
         try:
             return self._client.presigned_get_object(
                 bucket_name=bucket,
@@ -130,7 +135,7 @@ class MinIOStorageProvider(StorageProvider):
                 expires=timedelta(seconds=expires_seconds),
             )
         except Exception as e:
-            logger.error("Failed generating presigned URL for %s: %s", cleaned_name, e)
+            logger.error("Failed generating presigned URL for %s/%s: %s", bucket, cleaned_name, e)
             raise
 
     def is_healthy(self) -> bool:

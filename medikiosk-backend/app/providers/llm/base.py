@@ -53,6 +53,14 @@ class DoctorCaseSummaryResult:
     raw_response: Optional[Dict[str, Any]] = field(default_factory=dict)
 
 
+@dataclass
+class StructuredSummaryResult:
+    """Structured clinical summary result from AI provider."""
+    sections: List[Dict[str, Any]] = field(default_factory=list)
+    clinical_narrative: Optional[str] = None
+    raw_response: Optional[Dict[str, Any]] = field(default_factory=dict)
+
+
 class LLMProvider(ABC):
     """Abstract interface for Medical Large Language Model (LLM) intelligence engines."""
 
@@ -88,6 +96,14 @@ class LLMProvider(ABC):
         full_encounter_data: Dict[str, Any],
     ) -> DoctorCaseSummaryResult:
         """Synthesizes structured clinical intake into an objective doctor SOAP note."""
+        pass
+
+    @abstractmethod
+    async def generate_structured_summary(
+        self,
+        full_encounter_data: Dict[str, Any],
+    ) -> StructuredSummaryResult:
+        """Generates a structured, provenance-tagged clinical summary for the doctor EMR."""
         pass
 
     @abstractmethod
@@ -187,6 +203,36 @@ class MockLLMProvider(LLMProvider):
             provisional_diagnoses=["Acute Gastritis", "Functional Dyspepsia"],
             suggested_investigations=["Complete Blood Count (CBC)", "Ultrasound Abdomen if refractory"],
             recommended_triage_priority="NORMAL",
+            raw_response={"mock": True},
+        )
+
+    async def generate_structured_summary(
+        self,
+        full_encounter_data: Dict[str, Any],
+    ) -> StructuredSummaryResult:
+        return StructuredSummaryResult(
+            sections=[
+                {
+                    "section_title": "Patient Presentation",
+                    "items": [
+                        {"label": "Chief Complaint", "value": full_encounter_data.get("chief_complaint", "Abdominal Discomfort"), "confidence": "HIGH"},
+                    ],
+                },
+                {
+                    "section_title": "History of Presenting Illness",
+                    "items": [
+                        {"label": "Primary Symptom", "value": "Abdominal Pain - Epigastrium, 3 days, Moderate", "confidence": "HIGH"},
+                    ],
+                },
+                {
+                    "section_title": "Medications & Allergies",
+                    "items": [
+                        {"label": "Current Medications", "value": "Not reported", "confidence": "HIGH"},
+                        {"label": "Known Allergies", "value": "No known allergies reported", "confidence": "HIGH"},
+                    ],
+                },
+            ],
+            clinical_narrative="Patient presented with moderate abdominal discomfort in the epigastric region for 3 days. No red flags detected.",
             raw_response={"mock": True},
         )
 

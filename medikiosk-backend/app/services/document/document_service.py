@@ -1,4 +1,4 @@
-import io
+﻿import io
 import re
 import uuid
 from typing import List, Optional, Union
@@ -142,6 +142,98 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error during document upload: {str(commit_err)}",
+        )
+
+
+async def attach_document_reference(
+    db: AsyncSession,
+    encounter_id: Union[uuid.UUID, str],
+    file_name: str,
+    content_type: str,
+    file_size: int,
+    storage_key: str,
+    document_type: Optional[str] = "OTHER",
+) -> Document:
+    """Attaches a previously uploaded document (e.g. from QR mobile session) to the encounter."""
+    parsed_enc_uuid = _parse_uuid(encounter_id)
+    if parsed_enc_uuid:
+        condition = Encounter.id == parsed_enc_uuid
+    else:
+        condition = Encounter.encounter_number == str(encounter_id)
+
+    enc_query = select(Encounter).where(condition)
+    enc_res = await db.execute(enc_query)
+    encounter = enc_res.scalar_one_or_none()
+
+    if not encounter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Encounter '{encounter_id}' not found",
+        )
+
+    # Basic validations
+    if file_size <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File size must be greater than 0",
+        )
+
+    max_size_bytes = settings.MAX_DOCUMENT_SIZE_MB * 1024 * 1024
+    if file_size > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File exceeds maximum allowed size of {settings.MAX_DOCUMENT_SIZE_MB}MB",
+        )
+
+    if content_type not in settings.ALLOWED_DOCUMENT_MIME_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type '{content_type}'. Allowed types: {settings.ALLOWED_DOCUMENT_MIME_TYPES}",
+        )
+
+    safe_filename = sanitize_filename(file_name)
+    doc_id = uuid.uuid4()
+    patient_id = encounter.patient_id
+
+    document = Document(
+        id=doc_id,
+        patient_id=patient_id,
+        encounter_id=encounter.id,
+        file_name=safe_filename,
+        content_type=content_type,
+        file_size=file_size,
+        storage_key=storage_key,
+        document_type=document_type or "OTHER",
+        processing_status="UPLOADED",
+    )
+    db.add(document)
+    await db.flush()
+
+    await log_audit_event(
+        db=db,
+        action="DOCUMENT_ATTACHED",
+        entity_type="DOCUMENT",
+        entity_id=str(document.id),
+        encounter_id=encounter.id,
+        patient_id=patient_id,
+        details={
+            "file_name": safe_filename,
+            "content_type": content_type,
+            "file_size": file_size,
+            "storage_key": storage_key,
+            "source": "QR_MOBILE_UPLOAD",
+        },
+    )
+
+    try:
+        await db.commit()
+        await db.refresh(document)
+        return document
+    except Exception as commit_err:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error during document attach: {str(commit_err)}",
         )
 
 

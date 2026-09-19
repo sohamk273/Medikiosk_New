@@ -11,7 +11,12 @@ from app.models.clinical_case import ClinicalCaseRecord, ClinicalTurnRecord
 from app.models.encounter import Encounter, EncounterPriority
 from app.schemas.clinical import ClinicalFinalizeRequest, ClinicalCaseState
 from app.services.clinical.summary_generator import generate_clinical_summary
+from app.services.clinical.structured_summary_generator import (
+    generate_structured_summary_deterministic,
+    generate_structured_summary_with_ai,
+)
 from app.services.audit.audit_service import log_audit_event
+from app.services.clinical.clinical_engine import default_clinical_engine
 
 logger = logging.getLogger("clinical_service")
 
@@ -39,13 +44,32 @@ async def finalize_clinical_case(
     is_emergency = request.is_emergency or bool(case_state.red_flags)
     completion_status = "EMERGENCY_HALTED" if is_emergency else "COMPLETED"
     
-    # Generate doctor-facing clinical summary
+    # Generate doctor-facing clinical summary (plain text — backward compat)
     summary_text = generate_clinical_summary(
         case_state=case_state,
         turns=turns_data,
         is_emergency=is_emergency,
         patient_language=request.language,
     )
+
+    # Stage 9: Generate structured clinical summary with provenance tags
+    try:
+        llm_provider = getattr(default_clinical_engine, "llm_provider", None)
+        structured_result = await generate_structured_summary_with_ai(
+            case_state=case_state,
+            turns=turns_data,
+            is_emergency=is_emergency,
+            patient_language=request.language,
+            llm_provider=llm_provider,
+        )
+        structured_summary_dict = (
+            structured_result.model_dump(mode="json")
+            if hasattr(structured_result, "model_dump")
+            else None
+        )
+    except Exception as structured_err:
+        logger.warning("Structured summary generation failed: %s", structured_err)
+        structured_summary_dict = None
 
     # Convert red flags to serializable list of dicts
     serializable_red_flags: List[Dict[str, Any]] = []
@@ -73,6 +97,7 @@ async def finalize_clinical_case(
         existing_case.chief_complaint = case_state.chief_complaint
         existing_case.case_state = serializable_case_state
         existing_case.final_summary = summary_text
+        existing_case.structured_summary = structured_summary_dict
         existing_case.red_flags = serializable_red_flags
         existing_case.is_emergency = is_emergency
         existing_case.completion_status = completion_status
@@ -113,6 +138,7 @@ async def finalize_clinical_case(
             chief_complaint=case_state.chief_complaint,
             case_state=serializable_case_state,
             final_summary=summary_text,
+            structured_summary=structured_summary_dict,
             red_flags=serializable_red_flags,
             is_emergency=is_emergency,
             completion_status=completion_status,

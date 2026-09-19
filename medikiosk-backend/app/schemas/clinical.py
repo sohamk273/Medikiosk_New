@@ -1,3 +1,4 @@
+import enum
 """Clinical schemas for structured case state, entity extraction, turns, and persistence."""
 import uuid
 from datetime import datetime
@@ -142,6 +143,7 @@ class ClinicalEncounterRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     turns: List[ClinicalTurnRecordRead] = Field(default_factory=list)
+    structured_summary: Optional[Dict[str, Any]] = Field(None, description="Stage 9 structured clinical summary with provenance tags")
 
 
 class ClinicalSummaryResponse(BaseModel):
@@ -169,3 +171,58 @@ class ClinicalConversationResponse(BaseModel):
     encounter_id: Optional[uuid.UUID] = None
     total_turns: int
     turns: List[ClinicalTurnRecordRead] = Field(default_factory=list)
+
+
+# ==========================================
+# STAGE 9 STRUCTURED CLINICAL SUMMARY
+# ==========================================
+
+class ProvenanceTag(str, enum.Enum):
+    """Data provenance source label for structured summary items."""
+    PATIENT_REPORTED = "PATIENT_REPORTED"
+    SYSTEM_DETECTED = "SYSTEM_DETECTED"
+    AI_STRUCTURED = "AI_STRUCTURED"
+
+
+class StructuredSummaryItem(BaseModel):
+    """Single labeled data item with provenance tag."""
+    model_config = ConfigDict(from_attributes=True)
+
+    label: str = Field(..., description="Human-readable field label")
+    value: Any = Field(..., description="Field value (string, list, dict)")
+    provenance: ProvenanceTag = Field(..., description="Data source provenance")
+    confidence: Optional[str] = Field(None, description="Confidence level for AI items: HIGH, MEDIUM, LOW")
+
+
+class StructuredClinicalSection(BaseModel):
+    """Named section of structured clinical summary items."""
+    model_config = ConfigDict(from_attributes=True)
+
+    section_title: str = Field(..., description="Section heading")
+    items: List[StructuredSummaryItem] = Field(default_factory=list)
+
+
+class StructuredClinicalSummary(BaseModel):
+    """Complete structured clinical summary with provenance-tagged sections."""
+    model_config = ConfigDict(from_attributes=True)
+
+    version: str = Field("1.0", description="Schema version")
+    generated_at: str = Field(..., description="ISO timestamp of generation")
+    patient_language: str = Field("en", description="Patient intake language code")
+    summary_provider: str = Field(..., description="Generator: GEMINI_STRUCTURED or DETERMINISTIC_FALLBACK")
+    sections: List[StructuredClinicalSection] = Field(default_factory=list)
+    red_flag_alerts: List[StructuredSummaryItem] = Field(default_factory=list)
+    clinical_safety_notice: str = Field(
+        default="This summary is compiled from patient-reported intake data. No medical diagnosis is provided. Clinical assessment is reserved for the attending physician.",
+        description="Mandatory safety disclaimer",
+    )
+    raw_case_state_hash: Optional[str] = Field(None, description="SHA256 hash of source case_state for integrity")
+
+
+class StructuredSummaryResponse(BaseModel):
+    """API response for structured clinical summary endpoint."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    encounter_id: Optional[uuid.UUID] = None
+    structured_summary: StructuredClinicalSummary

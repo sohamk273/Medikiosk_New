@@ -54,6 +54,11 @@ class ClinicalCaseRecord(Base):
         nullable=False,
         default="",
     )
+    structured_summary: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON,
+        nullable=True,
+        default=None,
+    )
     red_flags: Mapped[List[Dict[str, Any]]] = mapped_column(
         JSON,
         nullable=False,

@@ -12,6 +12,8 @@ from app.schemas.clinical import (
     ClinicalSummaryResponse,
     ClinicalConversationResponse,
     ClinicalTurnRecordRead,
+    StructuredClinicalSummary,
+    StructuredSummaryResponse,
 )
 from app.services.clinical.clinical_engine import default_clinical_engine
 from app.services.clinical.clinical_service import (
@@ -171,4 +173,38 @@ async def get_clinical_conversation(
         encounter_id=case_record.encounter_id,
         total_turns=len(turns_read),
         turns=turns_read,
+    )
+
+
+# ==========================================
+# STAGE 9 STRUCTURED CLINICAL SUMMARY
+# ==========================================
+
+@router.get(
+    "/encounters/{encounter_id}/structured-summary",
+    response_model=StructuredSummaryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Retrieve structured clinical summary with provenance tags (Stage 9)",
+)
+async def get_structured_summary(
+    encounter_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> StructuredSummaryResponse:
+    """Get structured, provenance-tagged clinical summary for the doctor EMR."""
+    case_record = await get_clinical_case_by_identifier(db=db, identifier=encounter_id)
+    if not case_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Clinical case not found for identifier '{encounter_id}'.",
+        )
+    if not case_record.structured_summary:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Structured summary not yet generated for identifier '{encounter_id}'.",
+        )
+    structured = StructuredClinicalSummary.model_validate(case_record.structured_summary)
+    return StructuredSummaryResponse(
+        id=case_record.id,
+        encounter_id=case_record.encounter_id,
+        structured_summary=structured,
     )

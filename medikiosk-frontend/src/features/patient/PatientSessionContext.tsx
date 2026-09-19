@@ -1,6 +1,6 @@
 import type { ClinicalCaseState, ClinicalTurnResponse, ConversationTurnRecord, ClinicalEncounterRead } from '@/services/clinical/clinicalService';
 import { finalizeClinicalEncounter } from '@/services/clinical/clinicalService';
-﻿import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export type Language = 'en' | 'hi' | 'mr';

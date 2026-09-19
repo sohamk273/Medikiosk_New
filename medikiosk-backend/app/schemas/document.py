@@ -1,5 +1,4 @@
-"""Pydantic schemas for medical document upload, metadata read, and presigned access."""
-import uuid
+﻿import uuid
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,6 +18,15 @@ class DocumentCreate(DocumentBase):
     are strictly forbidden here and are managed authoritatively by the backend.
     """
     pass
+
+
+class DocumentAttach(DocumentBase):
+    """Document attachment payload for documents uploaded via QR mobile session or external storage."""
+    file_name: str = Field(..., description="Original file name")
+    content_type: str = Field(..., description="MIME content type")
+    file_size: int = Field(..., description="File size in bytes")
+    storage_key: str = Field(..., description="MinIO object storage key or URI")
+    document_type: Optional[str] = Field("OTHER", description="Clinical document category")
 
 
 class DocumentRead(DocumentBase):

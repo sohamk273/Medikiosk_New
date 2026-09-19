@@ -1,4 +1,4 @@
-"""Add audit_events and ayush_assessments tables for Stage 8
+"""Add audit_events, ayush_assessments, clinical_cases, and clinical_turns tables for Stage 8
 
 Revision ID: 0005_stage8_persistence
 Revises: 0004_document_extractions
@@ -17,7 +17,51 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Create audit_events table
+    # 1. Create clinical_cases table
+    op.create_table(
+        "clinical_cases",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("encounter_id", sa.Uuid(), nullable=True),
+        sa.Column("patient_id", sa.Uuid(), nullable=True),
+        sa.Column("status", sa.String(length=50), server_default="FINALIZED", nullable=False),
+        sa.Column("patient_language", sa.String(length=10), server_default="en", nullable=False),
+        sa.Column("chief_complaint", sa.Text(), nullable=True),
+        sa.Column("case_state", sa.JSON(), nullable=False),
+        sa.Column("final_summary", sa.Text(), server_default="", nullable=False),
+        sa.Column("red_flags", sa.JSON(), nullable=False),
+        sa.Column("is_emergency", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("completion_status", sa.String(length=50), server_default="COMPLETED", nullable=False),
+        sa.Column("intake_started_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.Column("finalized_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.ForeignKeyConstraint(["encounter_id"], ["encounters.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["patient_id"], ["patients.id"], ondelete="SET NULL"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(op.f("ix_clinical_cases_encounter_id"), "clinical_cases", ["encounter_id"], unique=False)
+    op.create_index(op.f("ix_clinical_cases_patient_id"), "clinical_cases", ["patient_id"], unique=False)
+    op.create_index(op.f("ix_clinical_cases_status"), "clinical_cases", ["status"], unique=False)
+    op.create_index(op.f("ix_clinical_cases_is_emergency"), "clinical_cases", ["is_emergency"], unique=False)
+
+    # 2. Create clinical_turns table
+    op.create_table(
+        "clinical_turns",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("clinical_case_id", sa.Uuid(), nullable=False),
+        sa.Column("turn_number", sa.Integer(), nullable=False),
+        sa.Column("question", sa.Text(), nullable=False),
+        sa.Column("question_type", sa.String(length=50), server_default="GENERAL", nullable=False),
+        sa.Column("patient_transcript", sa.Text(), nullable=False),
+        sa.Column("language", sa.String(length=10), server_default="en", nullable=False),
+        sa.Column("extracted_entities", sa.JSON(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.ForeignKeyConstraint(["clinical_case_id"], ["clinical_cases.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(op.f("ix_clinical_turns_clinical_case_id"), "clinical_turns", ["clinical_case_id"], unique=False)
+
+    # 3. Create audit_events table
     op.create_table(
         "audit_events",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -42,7 +86,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_audit_events_entity_type"), "audit_events", ["entity_type"], unique=False)
     op.create_index(op.f("ix_audit_events_created_at"), "audit_events", ["created_at"], unique=False)
 
-    # 2. Create ayush_assessments table
+    # 4. Create ayush_assessments table
     op.create_table(
         "ayush_assessments",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -79,3 +123,12 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_audit_events_patient_id"), table_name="audit_events")
     op.drop_index(op.f("ix_audit_events_encounter_id"), table_name="audit_events")
     op.drop_table("audit_events")
+
+    op.drop_index(op.f("ix_clinical_turns_clinical_case_id"), table_name="clinical_turns")
+    op.drop_table("clinical_turns")
+
+    op.drop_index(op.f("ix_clinical_cases_is_emergency"), table_name="clinical_cases")
+    op.drop_index(op.f("ix_clinical_cases_status"), table_name="clinical_cases")
+    op.drop_index(op.f("ix_clinical_cases_patient_id"), table_name="clinical_cases")
+    op.drop_index(op.f("ix_clinical_cases_encounter_id"), table_name="clinical_cases")
+    op.drop_table("clinical_cases")

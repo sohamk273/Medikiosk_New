@@ -335,3 +335,73 @@ async def test_document_deletion_removes_storage_and_metadata(client: AsyncClien
 
     # Verify MinIO object is gone
     assert cleaned_key not in fake_storage._storage
+
+@pytest.mark.asyncio
+async def test_attach_document_reference_success(client: AsyncClient, db_session: AsyncSession):
+    """Test QR Integration: Successfully attach externally uploaded document reference to encounter."""
+    doctor = await create_test_doctor(db_session, username="dr.attach")
+    token = await get_doctor_token(client, username="dr.attach")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    patient, encounter = await setup_patient_and_encounter(db_session)
+    payload = {
+        "file_name": "mobile_blood_test.pdf",
+        "content_type": "application/pdf",
+        "file_size": 102400,
+        "storage_key": "kiosk-uploads/raw/2026/09/20/session123_mobile_blood_test.pdf",
+        "document_type": "LAB_REPORT",
+    }
+
+    res = await client.post(f"/api/v1/encounters/{encounter.id}/documents/attach", json=payload)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["file_name"] == "mobile_blood_test.pdf"
+    assert data["content_type"] == "application/pdf"
+    assert data["file_size"] == 102400
+    assert data["storage_key"] == "kiosk-uploads/raw/2026/09/20/session123_mobile_blood_test.pdf"
+    assert data["document_type"] == "LAB_REPORT"
+    assert data["patient_id"] == str(patient.id)
+    assert data["encounter_id"] == str(encounter.id)
+
+    # Doctor can list attached QR document
+    list_res = await client.get(f"/api/v1/encounters/{encounter.id}/documents", headers=headers)
+    assert list_res.status_code == 200
+    docs = list_res.json()
+    assert any(d["file_name"] == "mobile_blood_test.pdf" for d in docs)
+
+    # Doctor can generate presigned URL for the attached QR document
+    doc_id = data["id"]
+    url_res = await client.get(f"/api/v1/documents/{doc_id}/url", headers=headers)
+    assert url_res.status_code == 200
+    assert "url" in url_res.json()
+
+
+@pytest.mark.asyncio
+async def test_attach_document_invalid_type_rejected(client: AsyncClient, db_session: AsyncSession):
+    """Test QR Integration: Attachment with invalid MIME type is rejected."""
+    _, encounter = await setup_patient_and_encounter(db_session)
+    payload = {
+        "file_name": "virus.exe",
+        "content_type": "application/x-msdownload",
+        "file_size": 5000,
+        "storage_key": "kiosk-uploads/virus.exe",
+        "document_type": "OTHER",
+    }
+    res = await client.post(f"/api/v1/encounters/{encounter.id}/documents/attach", json=payload)
+    assert res.status_code == 400
+    assert "Unsupported file type" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_attach_document_nonexistent_encounter_returns_404(client: AsyncClient):
+    """Test QR Integration: Attaching to nonexistent encounter returns 404."""
+    rand_enc_id = uuid.uuid4()
+    payload = {
+        "file_name": "scan.jpg",
+        "content_type": "image/jpeg",
+        "file_size": 2048,
+        "storage_key": "kiosk-uploads/scan.jpg",
+        "document_type": "PRESCRIPTION",
+    }
+    res = await client.post(f"/api/v1/encounters/{rand_enc_id}/documents/attach", json=payload)
+    assert res.status_code == 404

@@ -1,6 +1,6 @@
-"""Encounter API endpoints for kiosk check-in, visit management, and complete lifecycle."""
+﻿"""Encounter API endpoints for kiosk check-in, visit management, and complete lifecycle."""
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +16,7 @@ from app.schemas.encounter import (
 )
 from app.schemas.consent import ConsentCreate, ConsentRead
 from app.schemas.consultation import ConsultationCreate, ConsultationRead
-from app.schemas.document import DocumentRead
+from app.schemas.document import DocumentRead, DocumentAttach
 from app.schemas.ayush import (
     AYUSHIntakeCreate,
     AYUSHDoctorAssessmentUpdate,
@@ -41,6 +41,7 @@ from app.services.consultation.consultation_service import (
 from app.services.document.document_service import (
     upload_document,
     list_documents_by_encounter,
+    attach_document_reference,
 )
 from app.services.ayush.ayush_service import (
     save_ayush_intake,
@@ -76,26 +77,26 @@ async def start_encounter(
 @router.get(
     "/{encounter_id}",
     response_model=EncounterDetailResponse,
-    summary="Get encounter details and patient summary",
+    summary="Get encounter summary with patient demographics",
 )
 async def get_encounter(
-    encounter_id: str,
+    encounter_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ) -> EncounterDetailResponse:
-    """Returns encounter information along with associated patient demographic summary."""
+    """Fetches high-level encounter data including attached patient metadata."""
     return await get_encounter_detail(db, encounter_id)
 
 
 @router.get(
     "/{encounter_id}/lifecycle",
     response_model=EncounterLifecycleResponse,
-    summary="Retrieve complete persistent clinical record lifecycle",
+    summary="Get complete clinical lifecycle status",
 )
-async def get_encounter_lifecycle(
+async def get_lifecycle(
     encounter_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> EncounterLifecycleResponse:
-    """Aggregates the complete verified clinical record lifecycle (Demographics, Consent, Intake, AYUSH, Docs, Queue, Consultation, Audit)."""
+    """Returns encounter state machine progress, consent records, and OPD queue position."""
     return await get_encounter_full_lifecycle(db, encounter_id)
 
 
@@ -301,6 +302,30 @@ async def upload_encounter_document(
         file=file,
         document_type=document_type,
         storage_service=storage,
+    )
+    return DocumentRead.model_validate(document)
+
+
+@router.post(
+    "/{encounter_id}/documents/attach",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach an externally uploaded document (e.g. from QR mobile session)",
+)
+async def attach_encounter_document(
+    encounter_id: str,
+    payload: DocumentAttach,
+    db: AsyncSession = Depends(get_db),
+) -> DocumentRead:
+    """Links a document already stored in object storage (from QR mobile upload) to an encounter."""
+    document = await attach_document_reference(
+        db=db,
+        encounter_id=encounter_id,
+        file_name=payload.file_name,
+        content_type=payload.content_type,
+        file_size=payload.file_size,
+        storage_key=payload.storage_key,
+        document_type=payload.document_type,
     )
     return DocumentRead.model_validate(document)
 
