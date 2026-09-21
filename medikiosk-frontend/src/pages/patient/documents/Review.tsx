@@ -1,37 +1,33 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Eye, Trash2, CheckCircle2, FileImage } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import type { PatientDocument } from '@/features/patient/PatientSessionContext';
-import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
-import { Modal } from '@/components/ui/Modal';
 import { useTranslation } from '@/i18n';
 import { useKioskScreen } from '@/context/KioskScreenContext';
+import { FileText, FileImage, Trash2, Eye, CheckCircle2, Plus } from 'lucide-react';
+import type { PatientDocument } from '@/features/patient/PatientSessionContext';
+import { Modal } from '@/components/ui/Modal';
+import { GlassCard } from '@/components/ui/GlassCard';
 
-export default function Review() {
+export default function DocumentReview() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
-  const { language, documentIntake, updateDocument, removeDocument } = usePatientSession();
-
+  const { t, language } = useTranslation();
+  const { documentIntake, removeDocument } = usePatientSession();
   const [previewDoc, setPreviewDoc] = useState<PatientDocument | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  const hasDocuments = documentIntake.documents.length > 0;
+
   useEffect(() => {
-    if (previewDoc && previewDoc.file) {
-      const objectUrl = URL.createObjectURL(previewDoc.file);
-      setPreviewUrl(objectUrl);
-      return () => {
-        URL.revokeObjectURL(objectUrl);
-      };
+    if (previewDoc?.file) {
+      const url = URL.createObjectURL(previewDoc.file);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
     } else {
       setPreviewUrl(null);
     }
   }, [previewDoc]);
 
-  const handleConfirm = () => {
-    documentIntake.documents.forEach((doc) => {
-      updateDocument(doc.id, { status: 'reviewed' });
-    });
+  const handleContinue = () => {
     navigate('/patient/review');
   };
 
@@ -39,10 +35,8 @@ export default function Review() {
     navigate('/patient/documents/scan');
   };
 
-  const hasDocuments = documentIntake.documents.length > 0;
-
   useKioskScreen({
-    onContinue: handleConfirm,
+    onContinue: handleContinue,
     onBack: handleBack,
     audioPrompt: t('documents.reviewAudio') || 'Please review your uploaded documents or tap Continue to see your complete intake summary.',
   });
@@ -55,112 +49,105 @@ export default function Review() {
   };
 
   return (
-    <div className="w-full">
-      <StepProgressIndicator
-        current={16}
-        total={24}
-        title={t('documents.reviewTitle')}
-      />
+    <div className="w-full max-w-4xl mx-auto py-3 flex flex-col justify-between">
+      {/* Title Header */}
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-navy-900 tracking-tight font-devanagari">
+            {t('documents.reviewTitle')}
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-600 font-medium">
+            {hasDocuments
+              ? `${documentIntake.documents.length} document(s) attached`
+              : 'No documents attached'}
+          </p>
+        </div>
 
-      <div className="max-w-4xl mx-auto px-6 pt-10 pb-32">
-        <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#0D9488]/10 flex items-center justify-center shrink-0">
-                <FileText className="w-8 h-8 text-[#0D9488]" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 leading-tight mb-1 font-devanagari">
-                  {t('documents.reviewTitle')}
-                </h2>
-                <p className="text-slate-500 text-sm">
-                  {hasDocuments 
-                    ? `${documentIntake.documents.length} ${language === 'hi' ? 'दस्तावेज संलग्न' : 'document(s) attached'}` 
-                    : language === 'hi' ? 'कोई दस्तावेज संलग्न नहीं है' : 'No documents attached'}
-                </p>
-              </div>
-            </div>
+        <button
+          type="button"
+          onClick={() => navigate('/patient/documents/scan')}
+          className="px-3.5 py-2 bg-medigreen-50 hover:bg-medigreen-100 text-medigreen-800 border border-medigreen-300 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5 active:scale-95 cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          <span>{t('documents.addMore')}</span>
+        </button>
+      </div>
 
+      <GlassCard className="p-4 mb-3">
+        {!hasDocuments ? (
+          <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl mb-2">
+            <p className="text-slate-500 text-xs mb-3 font-devanagari">
+              {language === 'en'
+                ? 'No documents attached (You may proceed)'
+                : language === 'hi'
+                  ? 'कोई दस्तावेज़ संलग्न नहीं है (आप आगे बढ़ सकते हैं)'
+                  : 'कोणतीही कागदपत्रे जोडलेली नाहीत (आपण पुढे जाऊ शकता)'}
+            </p>
             <button
               type="button"
               onClick={() => navigate('/patient/documents/scan')}
-              className="px-5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-[#064E3B] border border-emerald-200 rounded-xl font-bold transition-all text-sm flex items-center gap-2"
+              className="bg-medigreen-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-medigreen-700 transition-colors"
             >
-              + {t('documents.addMore')}
+              Scan or Upload Document
             </button>
           </div>
-
-          {!hasDocuments ? (
-            <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl mb-8">
-              <p className="text-slate-500 mb-4 font-devanagari">
-                {language === 'hi' ? 'कोई दस्तावेज स्कैन या अपलोड नहीं किया गया है।' : 'No documents were scanned or uploaded.'}
-              </p>
-              <button
-                type="button"
-                onClick={() => navigate('/patient/documents/scan')}
-                className="bg-[#0D9488] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#0B8070] transition-colors"
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+            {documentIntake.documents.map((doc) => (
+              <div
+                key={doc.id}
+                className="border border-slate-200/80 rounded-xl p-3 flex items-center justify-between bg-slate-50/50 hover:bg-white hover:border-medigreen-300 transition-all shadow-xs"
               >
-                {language === 'hi' ? 'दस्तावेज स्कैन / अपलोड करें' : 'Scan or Upload Document'}
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              {documentIntake.documents.map((doc) => (
-                <div 
-                  key={doc.id}
-                  className="border border-slate-200 rounded-2xl p-4 flex items-center justify-between bg-slate-50 hover:bg-white hover:border-[#0D9488]/40 hover:shadow-sm transition-all"
-                >
-                  <div className="flex items-center gap-3 overflow-hidden pr-2">
-                    <div className="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0">
-                      {doc.fileName?.toLowerCase().endsWith('.pdf') ? (
-                        <FileText className="w-6 h-6 text-red-500" />
-                      ) : (
-                        <FileImage className="w-6 h-6 text-emerald-600" />
-                      )}
-                    </div>
-                    <div className="overflow-hidden">
-                      <div className="font-bold text-slate-800 text-sm truncate font-devanagari">
-                        {language === 'hi' ? doc.titleHindi || doc.title : doc.title}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                        <span className="truncate">{doc.fileName || 'document.pdf'}</span>
-                        <span>•</span>
-                        <span>{formatFileSize(doc.fileSize)}</span>
-                      </div>
-                    </div>
+                <div className="flex items-center gap-2.5 overflow-hidden pr-2">
+                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                    {doc.fileName?.toLowerCase().endsWith('.pdf') ? (
+                      <FileText className="w-5 h-5 text-rose-500" />
+                    ) : (
+                      <FileImage className="w-5 h-5 text-medigreen-600" />
+                    )}
                   </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewDoc(doc)}
-                      className="p-2.5 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
-                      title="Preview Document"
-                    >
-                      <Eye className="w-5 h-5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeDocument(doc.id)}
-                      className="p-2.5 hover:bg-red-50 text-red-500 rounded-xl transition-colors"
-                      title="Delete Document"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                  <div className="overflow-hidden">
+                    <div className="font-bold text-navy-900 text-xs truncate font-devanagari">
+                      {language === 'hi' ? doc.titleHindi || doc.title : doc.title}
+                    </div>
+                    <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                      <span className="truncate">{doc.fileName || 'document.pdf'}</span>
+                      <span>·</span>
+                      <span>{formatFileSize(doc.fileSize)}</span>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
 
-          <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-2xl p-4 flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-[#059669] shrink-0" />
-            <p className="text-[#059669] text-sm font-bold font-devanagari">
-              {t('documents.doctorReviewNote')}
-            </p>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewDoc(doc)}
+                    className="p-1.5 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
+                    title="Preview Document"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeDocument(doc.id)}
+                    className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg transition-colors"
+                    title="Delete Document"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
+        )}
+
+        <div className="bg-medigreen-50 border border-medigreen-200 rounded-xl p-2.5 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-medigreen-600 shrink-0" />
+          <p className="text-medigreen-800 text-xs font-bold font-devanagari">
+            {t('documents.doctorReviewNote')}
+          </p>
         </div>
-      </div>
+      </GlassCard>
 
       {/* Preview Modal */}
       {previewDoc && (
@@ -169,40 +156,39 @@ export default function Review() {
           onClose={() => setPreviewDoc(null)}
           title="Document Preview"
         >
-          <div className="flex flex-col items-center p-4 text-center">
-            <div className="w-full mb-3 flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <div className="flex flex-col items-center p-3 text-center">
+            <div className="w-full mb-3 flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
               <div className="text-left">
-                <h4 className="font-bold text-slate-800 text-sm font-devanagari">
+                <h4 className="font-bold text-navy-900 text-xs font-devanagari">
                   {previewDoc.title}
                 </h4>
-                <p className="text-xs text-slate-500 font-mono">
-                  {previewDoc.fileName} • {formatFileSize(previewDoc.fileSize)}
+                <p className="text-[10px] text-slate-500 font-mono">
+                  {previewDoc.fileName} · {formatFileSize(previewDoc.fileSize)}
                 </p>
               </div>
-              <span className="px-2.5 py-1 bg-emerald-100 text-[#064E3B] text-xs font-bold rounded-lg uppercase">
+              <span className="px-2 py-0.5 bg-medigreen-100 text-medigreen-800 text-[10px] font-bold rounded uppercase">
                 {previewDoc.type.replace('_', ' ')}
               </span>
             </div>
 
-            {/* Binary Preview If Real File Attached */}
             {previewUrl ? (
-              <div className="w-full max-h-[420px] overflow-auto rounded-xl border border-slate-200 mb-4 bg-slate-900 flex items-center justify-center p-2">
+              <div className="w-full max-h-[350px] overflow-auto rounded-xl border border-slate-200 mb-3 bg-slate-900 flex items-center justify-center p-2">
                 {previewDoc.fileName?.toLowerCase().endsWith('.pdf') ? (
-                  <iframe 
-                    src={previewUrl} 
-                    title="PDF Preview" 
-                    className="w-full h-[400px] rounded-lg bg-white" 
+                  <iframe
+                    src={previewUrl}
+                    title="PDF Preview"
+                    className="w-full h-[320px] rounded-lg bg-white"
                   />
                 ) : (
                   <img
                     src={previewUrl}
                     alt={previewDoc.title}
-                    className="max-h-[380px] max-w-full object-contain rounded-lg"
+                    className="max-h-[300px] max-w-full object-contain rounded-lg"
                   />
                 )}
               </div>
             ) : (
-              <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-700 text-left whitespace-pre-wrap font-mono mb-4 min-h-[140px]">
+              <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 text-left whitespace-pre-wrap font-mono mb-3 min-h-[100px]">
                 {previewDoc.mockOcrText || 'Scanned medical record saved for attending doctor consultation.'}
               </div>
             )}
@@ -210,7 +196,7 @@ export default function Review() {
             <button
               type="button"
               onClick={() => setPreviewDoc(null)}
-              className="bg-primary text-white px-8 py-2.5 rounded-xl font-bold hover:bg-primary/90 transition-colors text-sm"
+              className="bg-mediblue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-mediblue-700 transition-colors text-xs cursor-pointer"
             >
               Close
             </button>

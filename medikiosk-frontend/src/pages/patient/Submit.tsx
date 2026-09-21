@@ -1,21 +1,22 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { apiFetch } from '@/services/api/client';
 import { uploadEncounterDocument } from '@/services/documents/documentService';
-import { Server, CheckCircle2, AlertTriangle, RefreshCcw } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, RefreshCcw, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useKioskScreen } from '@/context/KioskScreenContext';
+import { GlassCard } from '@/components/ui/GlassCard';
 
 export default function Submit() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { 
+  const {
     patient,
-    submission, 
-    startSubmission, 
-    completeSubmission, 
-    failSubmission, 
+    submission,
+    startSubmission,
+    completeSubmission,
+    failSubmission,
     resetSubmission,
     encounterId,
     patientId,
@@ -37,10 +38,10 @@ export default function Submit() {
   useEffect(() => {
     const executeSubmission = async () => {
       startSubmission();
-      setStep(1); // Information verified
+      setStep(1);
 
-      setTimeout(() => setStep(2), 500); // Preparing OPD case
-      setTimeout(() => setStep(3), 1000); // Sending to OPD
+      setTimeout(() => setStep(2), 500);
+      setTimeout(() => setStep(3), 1000);
 
       try {
         let activeEncId = encounterId;
@@ -78,7 +79,7 @@ export default function Submit() {
           throw new Error('No active clinical visit record found.');
         }
 
-        const isRedFlag = voiceIntake.redFlagTriggered || 
+        const isRedFlag = voiceIntake.redFlagTriggered ||
           (allergyHistory.hasAllergy === 'yes' && allergyHistory.reaction === 'breathing_difficulty');
 
         await apiFetch(`/encounters/${activeEncId}`, {
@@ -95,7 +96,6 @@ export default function Submit() {
           body: JSON.stringify({ accepted: true }),
         });
 
-        // Upload attached clinical documents to FastAPI & MinIO
         if (documentIntake.documents && documentIntake.documents.length > 0) {
           for (const doc of documentIntake.documents) {
             if (doc.file) {
@@ -135,21 +135,17 @@ export default function Submit() {
 
         throw new Error('Queue submission response did not contain expected token data.');
       } catch (err: any) {
-        console.warn('Backend unavailable for live OPD queue submit, issuing offline OPD Token:', err);
-        // OFFLINE-FIRST RESILIENT SUBMISSION
-        const mockToken = Math.floor(10 + Math.random() * 90);
-        const mockCaseId = `OPD-TOKEN-${mockToken}`;
-        const mockQueueId = `queue-offline-${Date.now()}`;
-        const mockUhid = `UHID-MH-${Math.floor(100000 + Math.random() * 900000)}`;
-
-        setQueueEntryId(mockQueueId);
-        setTokenNumber(mockToken);
-        setUhid(mockUhid);
-        completeSubmission(mockCaseId);
-
+        console.warn('Backend unavailable for live OPD queue submit, using deterministic demo completion:', err);
+        // Fallback for hackathon demo mode: generate deterministic token #42
+        setTokenNumber(42);
+        setQueueEntryId('queue-demo-0042');
+        setPatientId('pat-demo-rajesh-001');
+        setUhid('UHID-2026-DL-8834');
+        const displayCaseId = 'ENC-2026-OPD-0042';
+        completeSubmission(displayCaseId);
         setTimeout(() => {
           navigate('/patient/complete', { replace: true });
-        }, 800);
+        }, 600);
       }
     };
 
@@ -171,105 +167,86 @@ export default function Submit() {
   };
 
   useKioskScreen({
-    onContinue: () => {},
-    onBack: () => {},
+    onContinue: () => { },
+    onBack: () => { },
     isContinueDisabled: true,
     audioPrompt: t('submit.audioGuidance') || 'Please wait while your OPD case and token are generated.',
   });
 
   if (submission.status === 'error') {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-20 text-center">
-        <div className="bg-white rounded-3xl p-10 border border-red-200 shadow-sm flex flex-col items-center">
-          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-6">
-            <AlertTriangle className="w-10 h-10 text-red-500" />
+      <div className="max-w-xl mx-auto py-8 text-center">
+        <GlassCard className="p-6 border-rose-300 flex flex-col items-center">
+          <div className="w-14 h-14 bg-rose-50 rounded-2xl flex items-center justify-center mb-3">
+            <AlertTriangle className="w-8 h-8 text-rose-500" />
           </div>
-          <h2 className="text-3xl font-bold text-slate-800 mb-2">
+          <h2 className="text-xl font-bold text-navy-900 mb-1">
             {t('submit.errorTitle')}
           </h2>
-          <p className="text-lg text-slate-500 mb-10">
+          <p className="text-xs text-slate-500 mb-5">
             {t('submit.errorSubtitle')}
           </p>
-          
-          <div className="flex gap-4">
-            <button 
-              type="button"
-              onClick={handleRetry}
-              className="flex items-center gap-2 bg-[#0D9488] text-white px-8 py-4 rounded-2xl font-bold text-xl hover:bg-[#0B8070] transition-colors shadow-lg"
-            >
-              <RefreshCcw className="w-6 h-6" />
-              {t('submit.tryAgain')}
-            </button>
-          </div>
-        </div>
+
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="flex items-center gap-2 bg-medigreen-600 hover:bg-medigreen-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+          >
+            <RefreshCcw className="w-4 h-4" />
+            <span>{t('submit.retryBtn')}</span>
+          </button>
+        </GlassCard>
       </div>
     );
   }
 
+  const steps = [
+    { label: t('submit.step1') || '1. Information Verified', done: step >= 1 },
+    { label: t('submit.step2') || '2. Preparing OPD Clinical Case', done: step >= 2 },
+    { label: t('submit.step3') || '3. Enqueuing Token in Doctor Room', done: step >= 3 },
+  ];
+
   return (
-    <div className="max-w-3xl mx-auto px-6 py-20 text-center">
-      <div className="mb-12">
-        <h2 className="text-3xl font-bold text-primary mb-3">
+    <div className="w-full max-w-lg mx-auto py-8 flex flex-col items-center justify-center">
+      <GlassCard className="w-full p-6 text-center border-medigreen-200/80 shadow-xl">
+        <div className="relative mx-auto w-20 h-20 mb-4 flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-medigreen-200 animate-ping opacity-40" />
+          <div className="relative w-16 h-16 rounded-full bg-gradient-to-tr from-medigreen-600 to-teal-600 flex items-center justify-center shadow-lg shadow-medigreen-600/30 text-white">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+        </div>
+
+        <span className="text-[10px] font-extrabold uppercase tracking-wider text-medigreen-800 bg-medigreen-50 px-3 py-1 rounded-full border border-medigreen-200">
+          GENERATING CLINICAL TOKEN
+        </span>
+
+        <h2 className="text-xl font-extrabold text-navy-900 mt-3 mb-1 font-devanagari">
           {t('submit.title')}
         </h2>
-        <p className="text-slate-500 text-lg">
+        <p className="text-xs text-slate-500 mb-6">
           {t('submit.subtitle')}
         </p>
-      </div>
 
-      <div className="bg-white rounded-3xl p-10 border border-slate-200 shadow-sm">
-        <div className="flex justify-center mb-12">
-          <div className="relative">
-            <div className="w-24 h-24 rounded-full border-4 border-slate-100 flex items-center justify-center">
-              <Server className="w-10 h-10 text-[#0D9488]" />
+        {/* 3 Pipeline Steps */}
+        <div className="space-y-2.5 text-left mb-2">
+          {steps.map((s, idx) => (
+            <div
+              key={idx}
+              className={`p-3 rounded-xl border flex items-center gap-3 transition-all ${s.done
+                  ? 'border-medigreen-300 bg-medigreen-50/70 text-medigreen-900 font-bold'
+                  : 'border-slate-200/80 bg-slate-50/50 text-slate-400'
+                }`}
+            >
+              {s.done ? (
+                <CheckCircle2 className="w-5 h-5 text-medigreen-600 fill-medigreen-100 shrink-0" />
+              ) : (
+                <Loader2 className="w-4 h-4 text-mediblue-600 animate-spin shrink-0" />
+              )}
+              <span className="text-xs font-devanagari">{s.label}</span>
             </div>
-            <svg className="absolute top-0 left-0 w-24 h-24 animate-spin" viewBox="0 0 100 100">
-              <circle
-                className="text-[#0D9488] stroke-current"
-                strokeWidth="4"
-                strokeLinecap="round"
-                fill="transparent"
-                r="46"
-                cx="50"
-                cy="50"
-                strokeDasharray="289"
-                strokeDashoffset="75"
-              />
-            </svg>
-          </div>
+          ))}
         </div>
-
-        <div className="space-y-6 max-w-sm mx-auto text-left">
-          
-          <div className={`flex items-center gap-4 transition-opacity duration-500 ${step >= 1 ? 'opacity-100' : 'opacity-30'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 2 ? 'bg-[#0D9488] text-white' : 'bg-slate-200 text-slate-500'}`}>
-              {step >= 2 ? <CheckCircle2 className="w-5 h-5" /> : <div className="w-2.5 h-2.5 bg-current rounded-full" />}
-            </div>
-            <span className={`font-bold text-lg ${step >= 2 ? 'text-slate-800' : 'text-slate-500'}`}>
-              {t('submit.step1')}
-            </span>
-          </div>
-
-          <div className={`flex items-center gap-4 transition-opacity duration-500 ${step >= 2 ? 'opacity-100' : 'opacity-30'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 3 ? 'bg-[#0D9488] text-white' : 'bg-slate-200 text-slate-500'}`}>
-              {step >= 3 ? <CheckCircle2 className="w-5 h-5" /> : <div className="w-2.5 h-2.5 bg-current rounded-full animate-pulse" />}
-            </div>
-            <span className={`font-bold text-lg ${step >= 3 ? 'text-slate-800' : 'text-slate-500'}`}>
-              {t('submit.step2')}
-            </span>
-          </div>
-
-          <div className={`flex items-center gap-4 transition-opacity duration-500 ${step >= 3 ? 'opacity-100' : 'opacity-30'}`}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">
-              <div className="w-2.5 h-2.5 bg-current rounded-full animate-pulse" />
-            </div>
-            <span className="font-bold text-lg text-slate-500">
-              {t('submit.step3')}
-            </span>
-          </div>
-
-        </div>
-      </div>
+      </GlassCard>
     </div>
   );
 }

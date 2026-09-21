@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 
 interface StepProgressIndicatorProps {
   current: number;
@@ -8,28 +8,30 @@ interface StepProgressIndicatorProps {
 }
 
 export function StepProgressIndicator({ current, total, title, badge }: StepProgressIndicatorProps) {
-  const percentage = Math.round((current / total) * 100);
+  const percentage = Math.min(100, Math.max(0, Math.round((current / total) * 100)));
   
   return (
-    <div className="w-full flex flex-col gap-2 py-4 border-b border-slate-200 bg-white px-8">
+    <div className="w-full bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-6 py-3 select-none">
       <div className="flex items-center gap-4 max-w-5xl mx-auto w-full">
-        <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-lg shadow-sm">
+        <div className="w-8 h-8 rounded-xl bg-mediblue-600 text-white flex items-center justify-center font-extrabold text-sm shadow-sm shrink-0">
           {current}
         </div>
         <div className="flex flex-col flex-1 gap-1">
-          <div className="flex justify-between items-center text-sm font-semibold text-primary uppercase tracking-wider">
+          <div className="flex justify-between items-center text-xs font-bold text-navy-900 tracking-wider">
             <span className="flex items-center gap-2">
-              STEP {current} OF {total} <span className="text-slate-400">•</span> {title}
+              <span className="text-slate-500 uppercase">Step {current} of {total}</span>
+              <span className="text-slate-300">•</span>
+              <span className="font-extrabold text-navy-900">{title}</span>
             </span>
             {badge && (
-              <span className="bg-mint text-primary px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm">
+              <span className="bg-blue-50 text-mediblue-700 border border-blue-200/80 px-2.5 py-0.5 rounded-full text-[11px] font-bold shadow-xs">
                 {badge}
               </span>
             )}
           </div>
-          <div className="w-full bg-secondary h-2 mt-1 rounded-full overflow-hidden">
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/40">
             <div 
-              className="bg-primary h-full transition-all duration-500 ease-out" 
+              className="bg-gradient-to-r from-mediblue-600 to-sky-500 h-full transition-all duration-400 ease-out rounded-full" 
               style={{ width: `${percentage}%` }}
             />
           </div>

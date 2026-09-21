@@ -8,34 +8,127 @@
   --color-secondary-foreground: #0F4C5C;
   
   --color-mint: #BAE6FD;
-  --color-medical: #3B82F6;
+  --color-medical: #2563EB;
+
+  --color-mediblue-50: #EFF6FF;
+  --color-mediblue-100: #DBEAFE;
+  --color-mediblue-200: #BFDBFE;
+  --color-mediblue-300: #93C5FD;
+  --color-mediblue-400: #60A5FA;
+  --color-mediblue-500: #3B82F6;
+  --color-mediblue-600: #2563EB;
+  --color-mediblue-700: #1D4ED8;
+  --color-mediblue-800: #1E40AF;
+  --color-mediblue-900: #1E3A8A;
+  --color-mediblue-950: #0F172A;
+
+  --color-medigreen-50: #ECFDF5;
+  --color-medigreen-100: #D1FAE5;
+  --color-medigreen-200: #A7F3D0;
+  --color-medigreen-300: #6EE7B7;
+  --color-medigreen-400: #34D399;
+  --color-medigreen-500: #10B981;
+  --color-medigreen-600: #059669;
+  --color-medigreen-700: #047857;
+
+  --color-navy-600: #475569;
+  --color-navy-700: #334155;
+  --color-navy-800: #1E293B;
+  --color-navy-900: #0F172A;
 
   --color-destructive: #D9381E;
   --color-destructive-foreground: #ffffff;
   
-  --color-background: #F8FAFC;
-  --color-foreground: #0f172a;
+  --color-background: #F4F8FC;
+  --color-foreground: #0F172A;
   
   --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
+  --color-card-foreground: #0F172A;
   --color-border: #E2E8F0;
   
-  --font-sans: 'Inter', Roboto, system-ui, sans-serif;
-  --font-devanagari: 'Noto Sans Devanagari', 'Inter', Roboto, system-ui, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', Roboto, system-ui, sans-serif;
+  --font-devanagari: 'Noto Sans Devanagari', 'Plus Jakarta Sans', 'Inter', sans-serif;
 }
 
 @layer base {
-  body {
+  * {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    touch-action: manipulation;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Typography utilities */
   h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold tracking-tight;
+    @apply font-bold tracking-tight;
   }
+}
+
+@layer components {
+  /* Soft Glassmorphism Panel */
+  .glass-card {
+    background-color: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 10px 30px -5px rgba(30, 58, 138, 0.07), 0 4px 12px -2px rgba(37, 99, 235, 0.04);
+  }
+
+  .glass-card-interactive {
+    background-color: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 10px 30px -5px rgba(30, 58, 138, 0.08), 0 4px 12px -2px rgba(37, 99, 235, 0.04);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .glass-card-interactive:hover {
+    background-color: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 16px 36px -4px rgba(30, 58, 138, 0.12), 0 6px 16px -2px rgba(37, 99, 235, 0.08);
+    transform: translateY(-2px);
+  }
+
+  .glass-card-interactive:active {
+    transform: scale(0.985);
+    box-shadow: 0 4px 14px -2px rgba(30, 58, 138, 0.1);
+  }
+
+  /* Kiosk Touch Targets */
+  .touch-target-lg {
+    min-height: 72px;
+    min-width: 72px;
+  }
+
+  .touch-target-md {
+    min-height: 56px;
+    min-width: 56px;
+  }
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(37, 99, 235, 0.4);
 }
 
 @keyframes modal-in {
@@ -50,7 +143,34 @@
 }
 
 @keyframes waveform-bar {
-  from { transform: scaleY(0.3); }
+  from { transform: scaleY(0.25); }
   to   { transform: scaleY(1.0); }
 }
 
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 0.3; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes sahayak-pointer-tap {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-8px, -6px); }
+  50% { transform: translate(0, 0); }
+  75% { transform: translate(-6px, -4px); }
+  100% { transform: translate(0, 0); }
+}
+
+.animate-sahayak-pointer {
+  animation: sahayak-pointer-tap 1.4s ease-out 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sahayak-pointer {
+    animation: none !important;
+  }
+}

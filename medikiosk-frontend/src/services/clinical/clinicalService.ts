@@ -72,8 +72,9 @@ export interface ClinicalTurnResponse {
   extracted_entities: ExtractedClinicalEntities;
   case_state: ClinicalCaseState;
   next_question: string;
-  next_question_regional?: string | null;
+  next_question_regional?: string;
   next_question_type: string;
+  suggested_options?: string[];
   missing_information: string[];
   red_flags: RedFlagEntity[];
   requires_emergency_attention: boolean;
@@ -149,7 +150,7 @@ export interface ClinicalConversationResponse {
   turns: ClinicalTurnRecordRead[];
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/v1\/?$/, '') : 'http://localhost:8000';
 
 /**
  * Sends a patient transcript along with current cumulative case state to the clinical engine.
@@ -157,7 +158,8 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export async function processClinicalTurn(
   transcript: string,
   language: string = 'en',
-  caseState: ClinicalCaseState | null = null
+  caseState: ClinicalCaseState | null = null,
+  turnNumber: number = 1
 ): Promise<ClinicalTurnResponse> {
   const response = await fetch(`${API_BASE}/api/v1/clinical/next-turn`, {
     method: 'POST',
@@ -168,6 +170,7 @@ export async function processClinicalTurn(
       transcript,
       language,
       case_state: caseState,
+      turn_number: turnNumber,
     }),
   });
 

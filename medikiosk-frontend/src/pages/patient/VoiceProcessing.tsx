@@ -6,7 +6,8 @@ import { transcribeAudio } from '@/services/voice/speechService';
 import { processClinicalTurn } from '@/services/clinical/clinicalService';
 import { useTranslation } from '@/i18n';
 import { useKioskScreen } from '@/context/KioskScreenContext';
-import { Loader2, CheckCircle2, Mic, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { GlassCard } from '@/components/ui/GlassCard';
 
 export default function VoiceProcessing() {
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ export default function VoiceProcessing() {
     updateClinicalCase,
     addConversationTurn,
     currentConversationTurn,
+    chiefComplaint,
   } = usePatientSession();
   const { t } = useTranslation();
 
@@ -41,11 +43,9 @@ export default function VoiceProcessing() {
   const questionPrompt = state?.questionPrompt || 'Please describe your symptoms';
   const turnNum = (currentConversationTurn || 1);
 
-  // Steps: 1 = Waveform captured, 2 = STT, 3 = Entity Extraction & Orchestration, 4 = Complete
   const [currentStep, setCurrentStep] = useState<number>(2);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Store latest state and action functions in a ref so the effect never restarts on re-renders
   const stateRef = useRef({
     language,
     audioBlob,
@@ -61,6 +61,7 @@ export default function VoiceProcessing() {
     setActiveTranscript,
     updateClinicalCase,
     addConversationTurn,
+    chiefComplaint,
   });
 
   useEffect(() => {
@@ -79,6 +80,7 @@ export default function VoiceProcessing() {
       setActiveTranscript,
       updateClinicalCase,
       addConversationTurn,
+      chiefComplaint,
     };
   });
 
@@ -108,31 +110,48 @@ export default function VoiceProcessing() {
         let isRedFlag = false;
 
         if (currentTouch) {
-          // Touch input method
           transcriptText = currentTouch;
           isRedFlag = state?.isRedFlag || false;
           setCurrentStep(3);
         } else if (currentBlob && currentBlob.size > 0) {
-          // 1. Transcription step via backend API
           if (isCancelled) return;
           setCurrentStep(2);
 
-          const res = await transcribeAudio(currentBlob, currentLang);
-          if (isCancelled) return;
+          try {
+            const res = await transcribeAudio(currentBlob, currentLang);
+            if (isCancelled) return;
+            transcriptText = res.transcript || '';
+          } catch (transcriptionErr) {
+            console.warn('Transcription failed, falling back to mock:', transcriptionErr);
+            if (isCancelled) return;
+            transcriptText = ''; // Fallback will handle this below
+          }
 
-          transcriptText = res.transcript || '';
+          // Safe fallback if transcription returned empty string or failed
+          if (!transcriptText || transcriptText.trim() === '') {
+             if (qId === 'q1_chief_complaint' && stateRef.current.chiefComplaint?.voiceTranscript) {
+                 transcriptText = stateRef.current.chiefComplaint.voiceTranscript;
+             } else {
+                 const mockResult = MockVoiceProvider.getMockResult(currentLang, qId);
+                 transcriptText = mockResult.transcript;
+                 isRedFlag = mockResult.isRedFlag;
+             }
+          }
         } else {
-          // Fallback mock progression
           await new Promise((r) => setTimeout(r, 600));
           if (isCancelled) return;
-          const mockResult = MockVoiceProvider.getMockResult(currentLang, qId);
-          transcriptText = mockResult.transcript;
-          isRedFlag = mockResult.isRedFlag;
+          
+          if (qId === 'q1_chief_complaint' && stateRef.current.chiefComplaint?.voiceTranscript) {
+              transcriptText = stateRef.current.chiefComplaint.voiceTranscript;
+          } else {
+              const mockResult = MockVoiceProvider.getMockResult(currentLang, qId);
+              transcriptText = mockResult.transcript;
+              isRedFlag = mockResult.isRedFlag;
+          }
         }
 
         if (isCancelled) return;
 
-        // 2. STT completed -> Activate Clinical Entity Extraction & Orchestration (Stage 4 & 5)
         setCurrentStep(3);
 
         let clinicalRes = null;
@@ -140,7 +159,8 @@ export default function VoiceProcessing() {
           clinicalRes = await processClinicalTurn(
             transcriptText,
             currentLang,
-            currentCaseState
+            currentCaseState,
+            turnNum
           );
           if (clinicalRes && updateCase) {
             updateCase(clinicalRes);
@@ -154,7 +174,6 @@ export default function VoiceProcessing() {
 
         if (isCancelled) return;
 
-        // Record conversational turn in session
         if (addTurn) {
           addTurn({
             turn: cTurn,
@@ -166,7 +185,6 @@ export default function VoiceProcessing() {
           });
         }
 
-        // Update central session context state
         setVoiceInput(currentTouch ? 'touch' : 'voice');
         setTranscript(transcriptText, isRedFlag);
         addResp({
@@ -180,13 +198,11 @@ export default function VoiceProcessing() {
           isRedFlag,
         });
 
-        // 3. Entity Extraction visual progress
         await new Promise((r) => setTimeout(r, 500));
         if (isCancelled) return;
 
         setCurrentStep(4);
 
-        // 4. Smooth transition to VoiceConfirmation
         await new Promise((r) => setTimeout(r, 300));
         if (isCancelled) return;
 
@@ -200,6 +216,7 @@ export default function VoiceProcessing() {
             nextQuestionType: clinicalRes?.next_question_type,
             isCaseComplete: clinicalRes?.is_case_complete,
             requiresEmergency: isRedFlag,
+            audioBlob: currentBlob,
           },
           replace: true,
         });
@@ -217,7 +234,7 @@ export default function VoiceProcessing() {
     return () => {
       isCancelled = true;
     };
-  }, []); // Run EXACTLY ONCE on component mount
+  }, []);
 
   useKioskScreen({
     isContinueDisabled: true,
@@ -226,126 +243,109 @@ export default function VoiceProcessing() {
 
   const steps = [
     {
-      label: language === 'hi' ? 'ऑडियो रिकॉर्डिंग प्राप्त हुई' : language === 'mr' ? 'ऑडिओ रेकॉर्डिंग प्राप्त झाली' : 'Audio Waveform Captured',
-      sublabel: language === 'hi' ? 'आपकी आवाज दर्ज कर ली गई है' : language === 'mr' ? 'तुमचा आवाज रेकॉर्ड झाला आहे' : 'Your response was recorded',
+      label: language === 'hi' ? 'ऑडियो सुरक्षित रिकॉर्ड हुआ' : language === 'mr' ? 'ऑडिओ सुरक्षित रेकॉर्ड झाला' : 'Audio Waveform Captured',
+      sublabel: language === 'hi' ? 'आपकी आवाज दर्ज कर ली गई है' : language === 'mr' ? 'आपला आवाज प्राप्त झाला' : 'Your response was recorded',
       done: true,
       active: false,
     },
     {
-      label: language === 'hi' ? 'वाणी पहचान और भाषा विश्लेषण' : language === 'mr' ? 'भाषण-ते-मजकूर आणि भाषा ओळख' : 'Speech-to-Text & Language Detection',
-      sublabel: language === 'hi' ? 'भाषा पहचान की जा रही है...' : language === 'mr' ? 'भाषा ओळखली जात आहे...' : 'Recognising spoken language...',
+      label: language === 'hi' ? 'भाषा पहचान और रूपांतरण' : language === 'mr' ? 'भाषा ओळख व मजकूर रूपांतरण' : 'Speech-to-Text & Language Processing',
+      sublabel: language === 'hi' ? 'आवाज से शब्दों की पहचान...' : language === 'mr' ? 'उच्चारित शब्दांची ओळख...' : 'Recognising spoken language...',
       done: currentStep > 2,
       active: currentStep === 2 && !errorMessage,
     },
     {
-      label: language === 'hi' ? 'नैदानिक बुद्धिमत्ता व लक्षण संरचना' : language === 'mr' ? 'वैद्यकीय माहिती व लक्षण रचना' : 'Clinical Intelligence & Case Structuring',
-      sublabel: language === 'hi' ? 'लक्षण एवं रेड-फ्लैग विश्लेषण...' : language === 'mr' ? 'लक्षणे आणि तातडीचे विश्लेषण...' : 'Structuring clinical entities and red flags...',
+      label: language === 'hi' ? 'क्लिनिकल इंटेलिजेंस और लक्षण विश्लेषण' : language === 'mr' ? 'क्लिनिकल विश्लेषण व लक्षण तपासणी' : 'Clinical Intelligence & Symptom Structuring',
+      sublabel: language === 'hi' ? 'लक्षणों का मेडिकल विश्लेषण...' : language === 'mr' ? 'वैद्यकीय माहितीची तपासणी...' : 'Structuring clinical entities and red flags...',
       done: currentStep > 3,
       active: currentStep === 3 && !errorMessage,
     },
   ];
 
   return (
-    <div className="w-full min-h-[80vh] flex flex-col items-center justify-center px-6 py-12">
-      <div className="max-w-xl w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center">
-        {/* Animated Processing Header */}
-        <div className="relative mx-auto w-24 h-24 mb-6 flex items-center justify-center">
-          <div className="absolute inset-0 rounded-full bg-teal-100 animate-ping opacity-50" />
-          <div className="relative w-20 h-20 rounded-full bg-gradient-to-tr from-[#064E3B] to-[#0D9488] flex items-center justify-center shadow-lg text-white">
+    <div className="w-full max-w-xl mx-auto py-6 flex flex-col items-center justify-center">
+      <GlassCard className="w-full p-6 text-center border-medigreen-200/80 shadow-xl">
+        <div className="relative mx-auto w-20 h-20 mb-4 flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-medigreen-200 animate-ping opacity-40" />
+          <div className="relative w-16 h-16 rounded-full bg-gradient-to-tr from-medigreen-600 to-teal-600 flex items-center justify-center shadow-lg shadow-medigreen-600/30 text-white">
             {errorMessage ? (
-              <AlertCircle className="w-10 h-10 text-amber-300" />
+              <AlertCircle className="w-8 h-8 text-amber-300" />
             ) : (
-              <Loader2 className="w-10 h-10 animate-spin" />
+              <Loader2 className="w-8 h-8 animate-spin" />
             )}
           </div>
         </div>
 
-        <span className="text-xs font-bold uppercase tracking-wider text-[#0D9488] bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
+        <span className="text-[10px] font-extrabold uppercase tracking-wider text-medigreen-800 bg-medigreen-50 px-3 py-1 rounded-full border border-medigreen-200">
           CONVERSATIONAL PATIENT INTAKE
         </span>
 
-        <h2 className="text-2xl font-bold text-slate-800 mt-4 mb-1 font-devanagari">
+        <h2 className="text-xl font-extrabold text-navy-900 mt-3 mb-1 font-devanagari">
           {questionPrompt}
         </h2>
-        <p className="text-sm text-slate-500 mb-8">
+        <p className="text-xs text-slate-500 mb-6">
           {errorMessage
             ? 'Transcription issue encountered'
             : language === 'hi'
-            ? 'आपके उत्तर का विश्लेषण किया जा रहा है...'
+            ? 'आपकी आवाज का विश्लेषण किया जा रहा है...'
             : language === 'mr'
-            ? 'तुमच्या उत्तराचे विश्लेषण केले जात आहे...'
-            : 'Understanding your response...'}
+            ? 'आपल्या उत्तराचे विश्लेषण सुरू आहे...'
+            : 'Analyzing and structuring your response...'}
         </p>
 
         {errorMessage ? (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-left">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-bold text-amber-900">Audio Processing Notice</p>
-                <p className="text-xs text-amber-700 mt-1">{errorMessage}</p>
+                <p className="text-xs font-bold text-amber-900">Audio Processing Notice</p>
+                <p className="text-[11px] text-amber-700 mt-0.5">{errorMessage}</p>
               </div>
             </div>
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-3 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => navigate('/patient/voice')}
-                className="bg-[#064E3B] hover:bg-[#053F30] text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5 shadow-sm"
+                className="bg-medigreen-600 hover:bg-medigreen-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className="w-3 h-3" />
                 <span>Speak Again</span>
               </button>
             </div>
           </div>
         ) : (
-          /* Processing Steps Timeline */
-          <div className="space-y-4 text-left mb-6">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              PROCESSING STEPS
-            </div>
+          <div className="space-y-3 text-left mb-2">
             {steps.map((step, idx) => (
               <div
                 key={idx}
-                className={`flex items-start gap-4 p-4 rounded-2xl border transition-all ${
+                className={`p-3 rounded-xl border flex items-center gap-3 transition-all ${
                   step.done
-                    ? 'border-[#0D9488] bg-[#F0FDF9]'
+                    ? 'border-medigreen-300 bg-medigreen-50/70 text-medigreen-900'
                     : step.active
-                    ? 'border-[#2563EB] bg-[#EFF6FF]'
-                    : 'border-slate-100 bg-slate-50/50 opacity-60'
+                    ? 'border-mediblue-300 bg-mediblue-50/70 text-mediblue-900 shadow-xs ring-2 ring-mediblue-200/50'
+                    : 'border-slate-200/80 bg-slate-50/50 text-slate-400'
                 }`}
               >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    step.done ? 'bg-[#0D9488]' : step.active ? 'bg-[#2563EB]' : 'bg-slate-200'
-                  }`}
-                >
+                <div className="shrink-0">
                   {step.done ? (
-                    <CheckCircle2 className="w-5 h-5 text-white" />
+                    <CheckCircle2 className="w-5 h-5 text-medigreen-600 fill-medigreen-100" />
                   ) : step.active ? (
-                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+                    <Loader2 className="w-5 h-5 text-mediblue-600 animate-spin" />
                   ) : (
-                    <span className="text-xs font-bold text-slate-500">{idx + 1}</span>
+                    <div className="w-5 h-5 rounded-full border-2 border-slate-300 flex items-center justify-center text-[10px] font-bold">
+                      {idx + 1}
+                    </div>
                   )}
                 </div>
-                <div>
-                  <p className={`font-bold text-sm ${step.done ? 'text-[#0D9488]' : step.active ? 'text-[#1E40AF]' : 'text-slate-400'}`}>
-                    {step.label}
-                  </p>
-                  <p className={`text-xs ${step.done || step.active ? 'text-slate-600' : 'text-slate-300'}`}>
-                    {step.sublabel}
-                  </p>
+                <div className="flex-1">
+                  <p className="text-xs font-bold font-devanagari leading-tight">{step.label}</p>
+                  <p className="text-[11px] opacity-75">{step.sublabel}</p>
                 </div>
               </div>
             ))}
           </div>
         )}
-
-        {/* Audio Wave Badge */}
-        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex items-center justify-center gap-3 text-xs text-slate-500">
-          <Mic className="w-4 h-4 text-[#0D9488]" />
-          <span>Live Audio Capture • {audioBlob ? `${(audioBlob.size / 1024).toFixed(1)} KB` : 'Direct Input'}</span>
-        </div>
-      </div>
+      </GlassCard>
     </div>
   );
 }

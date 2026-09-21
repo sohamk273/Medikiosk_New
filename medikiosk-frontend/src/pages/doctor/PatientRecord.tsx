@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, Activity, User, ShieldAlert, FileText, 
+import {
+  ArrowLeft, Activity, User, ShieldAlert, FileText,
   Pill, Calendar, Search, History
 } from 'lucide-react';
 import { MockPatientCaseProvider } from '@/services/doctor/MockPatientCaseProvider';
@@ -12,10 +12,10 @@ import { Modal } from '@/components/ui/Modal';
 export default function PatientRecordDetail() {
   const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
-  
+
   const [record, setRecord] = useState<PatientRecord | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   const [showDocModal, setShowDocModal] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<PatientDocument | null>(null);
 
@@ -74,7 +74,7 @@ export default function PatientRecordDetail() {
         </div>
         <h2 className="text-2xl font-black text-slate-800 mb-2">Patient record not found</h2>
         <p className="text-slate-500 mb-6">Please return to Patient Cases and select another patient.</p>
-        <button 
+        <button
           onClick={() => navigate('/doctor/cases')}
           className="bg-slate-800 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-slate-700 transition-colors"
         >
@@ -97,11 +97,11 @@ export default function PatientRecordDetail() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
-      
+
       {/* 1. STICKY HEADER */}
       <div className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur border-b border-slate-200 py-4 mb-6 -mx-6 px-6 shadow-sm">
         <div className="flex items-center gap-4 mb-2">
-          <button 
+          <button
             onClick={() => navigate('/doctor/cases')}
             className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors"
           >
@@ -118,12 +118,12 @@ export default function PatientRecordDetail() {
                 <h1 className="text-2xl font-black text-slate-800 tracking-tight">{record.name}</h1>
                 <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded">{record.patientId}</span>
               </div>
-              <div className="flex items-center gap-3 mt-1 text-sm text-slate-600 font-medium">
+              <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 font-mono">
                 <span>{record.age} years • {record.gender.charAt(0).toUpperCase() + record.gender.slice(1)}</span>
-                <span className="text-slate-300">|</span>
-                <span>📞 {maskMobile(record.mobile)}</span>
-                <span className="text-slate-300">|</span>
-                <span>🆔 {maskAbha(record.abhaId)}</span>
+                <span className="text-slate-300">•</span>
+                <span>Mobile: {maskMobile(record.mobile)}</span>
+                <span className="text-slate-300">•</span>
+                <span>ABHA: {maskAbha(record.abhaId)}</span>
               </div>
             </div>
           </div>
@@ -189,10 +189,10 @@ export default function PatientRecordDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* LEFT COLUMN - CLINICAL HISTORY */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* ENCOUNTER HISTORY */}
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
@@ -202,8 +202,8 @@ export default function PatientRecordDetail() {
             <div className="divide-y divide-slate-100">
               {record.encounters.length > 0 ? (
                 record.encounters.map(encounter => (
-                  <div 
-                    key={encounter.caseId} 
+                  <div
+                    key={encounter.caseId}
                     className="p-6 hover:bg-slate-50 transition-colors cursor-pointer group"
                     onClick={() => handleEncounterClick(encounter)}
                   >
@@ -257,7 +257,7 @@ export default function PatientRecordDetail() {
                       <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">{encounter.caseId}</span>
                       <span className="text-sm font-medium text-slate-500">{new Date(encounter.date).toLocaleDateString()}</span>
                     </div>
-                    
+
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Diagnosis / Impression</p>
                       <p className="text-sm font-medium text-slate-800">{encounter.diagnosis || 'None recorded'}</p>
@@ -269,7 +269,7 @@ export default function PatientRecordDetail() {
                         <p className="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 p-3 rounded-xl border border-slate-100">{encounter.assessment}</p>
                       </div>
                     )}
-                    
+
                     {encounter.consultation?.ayushAssessment && encounter.consultation.ayushAssessment.notes && (
                       <div>
                         <p className="text-xs font-bold text-[#0D9488] uppercase tracking-wider mb-1">AYUSH Practitioner Assessment</p>
@@ -282,7 +282,7 @@ export default function PatientRecordDetail() {
 
                     <div className="flex items-center justify-between mt-2 pt-4 border-t border-slate-100">
                       <span className="text-sm font-bold text-slate-600">{encounter.prescriptionCount} Prescriptions</span>
-                      <button 
+                      <button
                         onClick={() => navigate(`/doctor/case/${encounter.caseId}/summary`)}
                         className="text-[#0D9488] text-sm font-bold hover:underline"
                       >
@@ -335,7 +335,7 @@ export default function PatientRecordDetail() {
 
         {/* RIGHT COLUMN - SIDEBAR PANELS */}
         <div className="space-y-6">
-          
+
           {/* PRESCRIPTION HISTORY */}
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
@@ -378,7 +378,7 @@ export default function PatientRecordDetail() {
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-0.5">Patient Reported</p>
             </div>
             <div className="p-6 space-y-6">
-              
+
               {/* Allergies */}
               <div>
                 <h3 className="text-sm font-bold text-slate-800 mb-2">Allergies</h3>
@@ -422,7 +422,7 @@ export default function PatientRecordDetail() {
                         <p className="font-bold text-sm text-slate-800">{doc.type}</p>
                         <p className="text-xs text-slate-500">{new Date(doc.timestamp).toLocaleDateString()}</p>
                       </div>
-                      <button 
+                      <button
                         onClick={() => { setSelectedDoc(doc); setShowDocModal(true); }}
                         className="text-xs font-bold bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100 shadow-sm"
                       >
@@ -460,7 +460,7 @@ export default function PatientRecordDetail() {
           </div>
         </div>
         <div className="mt-6 flex justify-end">
-          <button 
+          <button
             onClick={() => setShowDocModal(false)}
             className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-colors"
           >

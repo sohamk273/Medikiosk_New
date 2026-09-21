@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 setlocal enabledelayedexpansion
 echo ========================================================
 echo Starting MediKiosk Platform (Frontend + Backend + QR Upload + Infra)
@@ -29,16 +29,16 @@ if exist ".venv\Scripts\python.exe" (
 )
 
 echo [3/6] Launching MediKiosk Backend API (Port 8000)...
-start "MediKiosk Backend (Port 8000)" cmd /k "cd /d \"%SCRIPT_DIR%medikiosk-backend\" ^&^& .venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload"
+start "MediKiosk Backend (Port 8000)" /D "%SCRIPT_DIR%medikiosk-backend" cmd /k .venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload
 
 echo [4/6] Launching QR Upload Microservice Backend (Port 8010)...
-start "QR Upload Backend (Port 8010)" cmd /k "cd /d \"%SCRIPT_DIR%kiosk-upload-module\backend\" ^&^& ..\..\medikiosk-backend\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8010 --reload"
+start "QR Upload Backend (Port 8010)" /D "%SCRIPT_DIR%kiosk-upload-module\backend" cmd /k ..\..\medikiosk-backend\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8010 --reload
 
 echo [5/6] Launching QR Mobile Upload Web Portal (Port 5174)...
-start "QR Mobile Upload Frontend (Port 5174)" cmd /k "cd /d \"%SCRIPT_DIR%kiosk-upload-module\frontend\" ^&^& npm run dev -- --port 5174 --host"
+start "QR Mobile Upload Frontend (Port 5174)" /D "%SCRIPT_DIR%kiosk-upload-module\frontend" cmd /k npm run dev -- --port 5174 --host
 
-echo [6/6] Launching React Kiosk & Doctor EMR (Port 5173)...
-start "MediKiosk Frontend (Port 5173)" cmd /k "cd /d \"%SCRIPT_DIR%medikiosk-frontend\" ^&^& npm run dev"
+echo [6/6] Launching React Kiosk ^& Doctor EMR (Port 5173)...
+start "MediKiosk Frontend (Port 5173)" /D "%SCRIPT_DIR%medikiosk-frontend" cmd /k npm run dev
 
 echo.
 echo ========================================================

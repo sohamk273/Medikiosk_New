@@ -3,6 +3,8 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 // Layouts
 import { KioskLayout } from '@/components/layout/KioskLayout';
 import { EMRLayout } from '@/components/layout/EMRLayout';
+import { StaffLayout } from '@/components/layout/StaffLayout';
+import { AdminLayout } from '@/components/layout/AdminLayout';
 
 // Patient Pages
 import Welcome from '@/pages/patient/Welcome';
@@ -24,6 +26,7 @@ import Allergies from '@/pages/patient/Allergies';
 import Scan from '@/pages/patient/documents/Scan';
 import Review from '@/pages/patient/documents/Review';
 import PatientReview from '@/pages/patient/Review';
+import Appointment from '@/pages/patient/Appointment';
 import Submit from '@/pages/patient/Submit';
 import Complete from '@/pages/patient/Complete';
 
@@ -44,10 +47,45 @@ import ClinicalReports from '@/pages/doctor/ClinicalReports';
 import ClinicalReportDetail from '@/pages/doctor/ClinicalReportDetail';
 import Settings from '@/pages/doctor/Settings';
 
+// Staff Pages
+import StaffDashboard from '@/pages/staff/StaffDashboard';
+import StaffRegistration from '@/pages/staff/StaffRegistration';
+import StaffAppointments from '@/pages/staff/StaffAppointments';
+import StaffQueue from '@/pages/staff/StaffQueue';
+import StaffCheckIn from '@/pages/staff/StaffCheckIn';
+import StaffPatientMovement from '@/pages/staff/StaffPatientMovement';
+import StaffDocuments from '@/pages/staff/StaffDocuments';
+import StaffBilling from '@/pages/staff/StaffBilling';
+import StaffAlerts from '@/pages/staff/StaffAlerts';
+import StaffSettings from '@/pages/staff/StaffSettings';
+
+// Admin Pages
+import AdminDashboard from '@/pages/admin/AdminDashboard';
+import AdminPatientAnalytics from '@/pages/admin/AdminPatientAnalytics';
+import AdminOpdAnalytics from '@/pages/admin/AdminOpdAnalytics';
+import AdminAppointments from '@/pages/admin/AdminAppointments';
+import AdminQueueAnalytics from '@/pages/admin/AdminQueueAnalytics';
+import AdminDoctorPerformance from '@/pages/admin/AdminDoctorPerformance';
+import AdminStaffOperations from '@/pages/admin/AdminStaffOperations';
+import AdminClinicalTrends from '@/pages/admin/AdminClinicalTrends';
+import AdminReports from '@/pages/admin/AdminReports';
+import AdminRecords from '@/pages/admin/AdminRecords';
+import AdminUserRoles from '@/pages/admin/AdminUserRoles';
+import AdminAuditLogs from '@/pages/admin/AdminAuditLogs';
+import AdminSettings from '@/pages/admin/AdminSettings';
+
+// Demo Intelligence Routes (5 Extra USPs)
+import Doctor30SecondView from '@/demo/pages/Doctor30SecondView';
+import DemoHub from '@/demo/pages/DemoHub';
+
 export const router = createBrowserRouter([
   {
     path: '/',
     element: <Navigate to="/patient" replace />,
+  },
+  {
+    path: '/demo-hub',
+    element: <DemoHub />,
   },
   // Patient Kiosk Routes
   {
@@ -75,6 +113,7 @@ export const router = createBrowserRouter([
       { path: 'documents/scan', element: <Scan /> },
       { path: 'documents/review', element: <Review /> },
       { path: 'review', element: <PatientReview /> },
+      { path: 'appointment', element: <Appointment /> },
       { path: 'submit', element: <Submit /> },
       { path: 'complete', element: <Complete /> },
     ],
@@ -88,6 +127,9 @@ export const router = createBrowserRouter([
       { path: 'login', element: <Login /> },
       { path: 'dashboard', element: <Dashboard /> },
       { path: 'queue', element: <DoctorQueue /> },
+      { path: '30s-view', element: <Doctor30SecondView /> },
+      { path: 'case/:caseId/30s-view', element: <Doctor30SecondView /> },
+      { path: 'demo-hub', element: <DemoHub /> },
       { path: 'case/:caseId', element: <CaseDetail /> },
       { path: 'case/:caseId/summary', element: <DoctorCaseSummary /> },
       { path: 'cases', element: <PatientCases /> },
@@ -101,5 +143,44 @@ export const router = createBrowserRouter([
       { path: 'reports/:reportId', element: <ClinicalReportDetail /> },
       { path: 'settings', element: <Settings /> },
     ],
-  }
+  },
+  // Staff Operations Portal Routes
+  {
+    path: '/staff',
+    element: <StaffLayout />,
+    children: [
+      { index: true, element: <Navigate to="dashboard" replace /> },
+      { path: 'dashboard', element: <StaffDashboard /> },
+      { path: 'register', element: <StaffRegistration /> },
+      { path: 'appointments', element: <StaffAppointments /> },
+      { path: 'queue', element: <StaffQueue /> },
+      { path: 'check-in', element: <StaffCheckIn /> },
+      { path: 'movement', element: <StaffPatientMovement /> },
+      { path: 'documents', element: <StaffDocuments /> },
+      { path: 'billing', element: <StaffBilling /> },
+      { path: 'alerts', element: <StaffAlerts /> },
+      { path: 'settings', element: <StaffSettings /> },
+    ],
+  },
+  // Admin Governance Portal Routes
+  {
+    path: '/admin',
+    element: <AdminLayout />,
+    children: [
+      { index: true, element: <Navigate to="dashboard" replace /> },
+      { path: 'dashboard', element: <AdminDashboard /> },
+      { path: 'patients', element: <AdminPatientAnalytics /> },
+      { path: 'opd-analytics', element: <AdminOpdAnalytics /> },
+      { path: 'appointments', element: <AdminAppointments /> },
+      { path: 'queue-analytics', element: <AdminQueueAnalytics /> },
+      { path: 'doctors', element: <AdminDoctorPerformance /> },
+      { path: 'staff-operations', element: <AdminStaffOperations /> },
+      { path: 'clinical-trends', element: <AdminClinicalTrends /> },
+      { path: 'reports', element: <AdminReports /> },
+      { path: 'records', element: <AdminRecords /> },
+      { path: 'users', element: <AdminUserRoles /> },
+      { path: 'audit-logs', element: <AdminAuditLogs /> },
+      { path: 'settings', element: <AdminSettings /> },
+    ],
+  },
 ]);

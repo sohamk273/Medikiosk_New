@@ -2,14 +2,41 @@ import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { SidebarNav } from './SidebarNav';
 import { TopBar } from './TopBar';
 import { useDoctorAuth } from '@/features/auth/DoctorAuthContext';
+import { DemoModeBanner } from '@/demo/components/DemoModeBanner';
 
 export function EMRLayout() {
   const { isAuthenticated, isLoading } = useDoctorAuth();
   const location = useLocation();
 
-  // Allow login page to render without sidebar navigation
+  // Allow demo views or login page to render without blocking redirect
+  const isDemoView = location.pathname.includes('30s-view') || location.pathname.includes('demo-hub');
+
   if (location.pathname === '/doctor/login') {
-    return <Outlet />;
+    return (
+      <div className="min-h-screen flex flex-col">
+        <DemoModeBanner />
+        <Outlet />
+      </div>
+    );
+  }
+
+  if (isDemoView) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col font-sans">
+        <DemoModeBanner />
+        <div className="flex-1 flex min-h-0">
+          <SidebarNav />
+          <div className="flex-1 flex flex-col min-w-0">
+            <TopBar />
+            <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="max-w-7xl mx-auto">
+                <Outlet />
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Prevent flashing unauthenticated content or false redirect while checking backend /auth/me
@@ -28,15 +55,18 @@ export function EMRLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex font-sans">
-      <SidebarNav />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar />
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-7xl mx-auto">
-            <Outlet />
-          </div>
-        </main>
+    <div className="min-h-screen bg-background flex flex-col font-sans">
+      <DemoModeBanner />
+      <div className="flex-1 flex min-h-0">
+        <SidebarNav />
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopBar />
+          <main className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-7xl mx-auto">
+              <Outlet />
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );

@@ -239,9 +239,10 @@ export default function AyushAssessments() {
                   </div>
                   <h3 className="font-bold text-lg text-slate-800 leading-tight mb-1">{record.patientName}</h3>
                   <p className="text-sm text-slate-500 font-medium">{record.age} years • {record.gender.charAt(0).toUpperCase() + record.gender.slice(1)}</p>
-                  <div className="flex flex-wrap items-center gap-3 mt-2 text-xs font-mono text-slate-500">
-                    <span className="bg-slate-100 px-2 py-1 rounded">📞 {record.maskedMobile}</span>
-                    <span className="bg-slate-100 px-2 py-1 rounded">🆔 {record.maskedAbhaId}</span>
+                  <div className="flex flex-wrap items-center gap-2 mt-2 text-xs font-mono text-slate-500">
+                    <span>Mobile: {record.maskedMobile}</span>
+                    <span className="text-slate-300">•</span>
+                    <span>ABHA: {record.maskedAbhaId}</span>
                   </div>
                 </div>
 

@@ -3,7 +3,7 @@ export const hi = {
     "continue": "आगे बढ़ें",
     "back": "पीछे जाएं",
     "repeatAudio": "दोबारा सुनें",
-    "needHelp": "सहायक मदद चाहिए",
+    "needHelp": "सहायक असिस्ट",
     "emergencyHelp": "आपातकालीन मदद",
     "done": "पूर्ण",
     "cancel": "रद्द करें",

@@ -5,15 +5,15 @@ import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { ttsService } from '@/services/voice/ttsService';
 import { useTranslation } from '@/i18n';
 import { useKioskScreenContext } from '@/context/KioskScreenContext';
-import { SahayakHelpModal } from '@/components/kiosk/modals/SahayakHelpModal';
+import { useSahayakAssist } from '@/features/sahayak/SahayakAssistContext';
 
 export function KioskBottomBar() {
   const location = useLocation();
   const { audioEnabled, language } = usePatientSession();
   const { t } = useTranslation();
   const { config, handleContinue, handleBack } = useKioskScreenContext();
+  const { openSahayakModal, guidedAssistMode } = useSahayakAssist();
 
-  const [sahayakOpen, setSahayakOpen] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
   const isLanguagePage = location.pathname === '/patient/language' || location.pathname === '/';
@@ -51,79 +51,80 @@ export function KioskBottomBar() {
     ? t(config.backLabelKey) 
     : t('common.back');
 
+  const sahayakLabel = 'Sahayak Assist';
+
   return (
-    <>
-      <footer className="fixed bottom-0 left-0 right-0 h-24 bg-white border-t border-slate-200 px-8 flex items-center justify-between shadow-lg z-40">
-        {/* Left: Back Navigation Button */}
-        <div>
-          {!isCompletePage && (
-            <button
-              type="button"
-              onClick={handleBack}
-              disabled={config.isBackDisabled}
-              className={`flex items-center gap-3 px-6 py-4 rounded-2xl font-bold text-lg border-2 transition-all ${
-                config.isBackDisabled
-                  ? 'border-slate-200 text-slate-300 cursor-not-allowed'
-                  : 'border-slate-200 text-slate-700 hover:bg-slate-50 active:bg-slate-100 shadow-sm'
-              }`}
-            >
-              <ChevronLeft className="w-6 h-6" />
-              <span>{backLabel}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Center: Sahayak & Repeat Audio Assistance */}
-        <div className="flex items-center gap-4">
+    <footer className="relative w-full h-[88px] bg-white border-t border-slate-200 px-6 sm:px-10 flex items-center justify-between z-30 shrink-0">
+      {/* Left: Back Navigation Button */}
+      <div>
+        {!isCompletePage && (
           <button
             type="button"
-            onClick={() => setSahayakOpen(true)}
-            className="flex items-center gap-2 bg-[#E6FAF5] hover:bg-[#D1F4E8] text-[#0D9488] px-6 py-4 rounded-2xl font-bold text-lg border border-[#A7F3D0] transition-colors shadow-sm"
-          >
-            <HelpCircle className="w-6 h-6 text-[#0D9488]" />
-            <span>{t('common.needHelp')}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={playScreenAudio}
-            disabled={!audioEnabled || isPlayingAudio}
-            className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-bold text-lg border transition-colors shadow-sm ${
-              !audioEnabled
-                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
-                : isPlayingAudio
-                  ? 'bg-[#CCFBF1] text-[#0D9488] border-[#0D9488] animate-pulse'
-                  : 'bg-white hover:bg-slate-50 text-primary border-slate-200'
+            onClick={handleBack}
+            disabled={config.isBackDisabled}
+            className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold text-[15px] border transition-all active:scale-95 ${
+              config.isBackDisabled
+                ? 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
+                : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            <Volume2 className={`w-6 h-6 ${isPlayingAudio ? 'text-[#0D9488]' : 'text-primary'}`} />
-            <span>{isPlayingAudio ? t('common.speaking') || 'Speaking...' : t('common.repeatAudio')}</span>
+            <ChevronLeft className="w-5 h-5" />
+            <span>{backLabel}</span>
           </button>
-        </div>
+        )}
+      </div>
 
-        {/* Right: Continue Navigation Button */}
-        <div>
-          <button
-            type="button"
-            onClick={handleContinue}
-            disabled={config.isContinueDisabled}
-            className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-xl transition-all shadow-md ${
-              config.isContinueDisabled
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                : 'bg-[#064E3B] hover:bg-[#064E3B]/90 text-white active:scale-98 shadow-emerald-900/10'
-            }`}
-          >
-            <span>{continueLabel}</span>
-            <ArrowRight className="w-6 h-6" />
-          </button>
-        </div>
-      </footer>
+      {/* Center: Sahayak & Repeat Audio Assistance */}
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          id="sahayak-target-help"
+          onClick={openSahayakModal}
+          className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold text-[15px] border transition-all active:scale-95 shadow-sm ${
+            guidedAssistMode 
+              ? 'bg-teal-50 text-teal-800 border-teal-300 ring-2 ring-teal-200' 
+              : 'bg-white hover:bg-slate-50 text-teal-800 border-slate-300'
+          }`}
+        >
+          <HelpCircle className="w-5 h-5 text-teal-700" />
+          <span>{sahayakLabel}</span>
+        </button>
 
-      {/* Sahayak Assistance Modal */}
-      <SahayakHelpModal
-        open={sahayakOpen}
-        onClose={() => setSahayakOpen(false)}
-      />
-    </>
+        <button
+          type="button"
+          id="sahayak-target-repeat"
+          onClick={playScreenAudio}
+          disabled={!audioEnabled || isPlayingAudio}
+          className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold text-[15px] border transition-all active:scale-95 shadow-sm ${
+            !audioEnabled
+              ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
+              : isPlayingAudio
+                ? 'bg-medigreen-50 text-medigreen-700 border-medigreen-400 ring-2 ring-medigreen-300 animate-pulse'
+                : 'bg-white hover:bg-slate-50 text-blue-600 border-slate-300'
+          }`}
+        >
+          <Volume2 className={`w-5 h-5 ${isPlayingAudio ? 'text-medigreen-600 animate-bounce' : ''}`} />
+          <span>{isPlayingAudio ? t('common.speaking') || 'Speaking...' : t('common.repeatAudio')}</span>
+        </button>
+      </div>
+
+      {/* Right: Continue Navigation Button */}
+      <div>
+        <button
+          type="button"
+          id="sahayak-target-continue"
+          onClick={handleContinue}
+          disabled={config.isContinueDisabled}
+          className={`flex items-center gap-2 px-8 py-3 rounded-full font-bold text-[16px] transition-all active:scale-95 ${
+            config.isContinueDisabled
+              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              : 'bg-[#008f71] hover:bg-[#007a60] text-white shadow-lg'
+          }`}
+        >
+          <span>{continueLabel}</span>
+          <ArrowRight className="w-5 h-5" />
+        </button>
+      </div>
+    </footer>
   );
 }

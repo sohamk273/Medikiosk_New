@@ -1,4 +1,5 @@
 import type { ClinicalCaseState, ClinicalTurnResponse, ConversationTurnRecord, ClinicalEncounterRead } from '@/services/clinical/clinicalService';
+import { MockDoctorCaseProvider } from '@/services/doctor/MockDoctorCaseProvider';
 import { finalizeClinicalEncounter } from '@/services/clinical/clinicalService';
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -24,9 +25,8 @@ export interface ConsentState {
 
 export interface ChiefComplaintState {
   primaryComplaint: string;
+  voiceTranscript?: string;
 }
-
-// ─── Slice 4: Voice Intake ──────────────────────────────────────────────────
 
 export interface VoiceResponse {
   questionId: string;
@@ -35,6 +35,7 @@ export interface VoiceResponse {
   inputMethod: VoiceInputMethod;
   transcript?: string;       // set when inputMethod === 'voice'
   selectedOption?: string;   // set when inputMethod === 'touch'
+  selectedOptions?: string[]; // set for multi-select options
   confirmed: boolean;
   timestamp: string;
   isRedFlag: boolean;
@@ -46,6 +47,7 @@ export interface VoiceIntakeState {
   activeInputMethod?: VoiceInputMethod;
   activeTranscript?: string;
   activeSelectedOption?: string;
+  activeSelectedOptions?: string[];
   pendingConfirmation: boolean;
   activeIsRedFlag: boolean;
   completed: boolean;
@@ -59,11 +61,32 @@ const defaultVoiceIntake: VoiceIntakeState = {
   activeInputMethod: undefined,
   activeTranscript: undefined,
   activeSelectedOption: undefined,
+  activeSelectedOptions: undefined,
   pendingConfirmation: false,
   activeIsRedFlag: false,
   completed: false,
   redFlagTriggered: false,
   staffNotified: false,
+};
+
+// ─── Slice 4b: Appointment Scheduling ───────────────────────────────────────
+
+export interface AppointmentState {
+  date: string;          // e.g. 'Today'
+  timeSlot: string;      // e.g. '03:30 PM'
+  doctorName: string;    // 'Dr. Priya Sharma'
+  roomNumber: string;    // 'Room 4'
+  department: string;    // 'Smart OPD & AYUSH'
+  confirmed: boolean;
+}
+
+const defaultAppointmentState: AppointmentState = {
+  date: 'Today',
+  timeSlot: '03:30 PM',
+  doctorName: 'Dr. Priya Sharma',
+  roomNumber: 'Room 4',
+  department: 'Smart OPD & AYUSH',
+  confirmed: false,
 };
 
 // ─── Slice 5: AYUSH, Medication, Allergy ─────────────────────────────────────
@@ -246,6 +269,11 @@ const defaultCaseClosureState: CaseClosureState = {
 // ─── Full Session State ─────────────────────────────────────────────────────
 
 export interface PatientSessionState {
+  priority: 'NORMAL' | 'CRITICAL';
+  emergencyStatus: 'NONE' | 'TRIGGERED' | 'ACKNOWLEDGED' | 'RESOLVED';
+  emergencyReason?: string;
+  emergencyTriggeredAt?: string;
+
   language: Language;
   identificationMethod: IdentityMethod;
   abhaId: string;
@@ -254,6 +282,7 @@ export interface PatientSessionState {
   consent: ConsentState;
   chiefComplaint: ChiefComplaintState;
   voiceIntake: VoiceIntakeState;
+  appointment: AppointmentState;
   ayushIntake: AyushIntakeState;
   medicationHistory: MedicationHistory;
   allergyHistory: AllergyHistory;
@@ -296,6 +325,10 @@ export interface PatientSessionContextType extends PatientSessionState {
   setConsent: (consent: ConsentState) => void;
   setChiefComplaint: (complaint: ChiefComplaintState) => void;
   clearSession: () => void;
+  
+  // Emergency setters
+  triggerEmergency: (reason: string) => void;
+  acknowledgeEmergency: () => void;
 
   // Backend Relational setters (Stage 2)
   setPatientId: (id?: string) => void;
@@ -308,6 +341,8 @@ export interface PatientSessionContextType extends PatientSessionState {
   setActiveVoiceInput: (method: VoiceInputMethod) => void;
   setActiveTranscript: (transcript: string, isRedFlag: boolean) => void;
   setActiveSelectedOption: (option: string, isRedFlag: boolean) => void;
+  setActiveSelectedOptions: (options: string[], isRedFlag: boolean) => void;
+  setVoiceQuestionIndex: (index: number) => void;
   setPendingConfirmation: (pending: boolean) => void;
   addVoiceResponse: (response: VoiceResponse) => void;
   advanceVoiceQuestion: () => void;
@@ -315,6 +350,10 @@ export interface PatientSessionContextType extends PatientSessionState {
   setRedFlagTriggered: (triggered: boolean) => void;
   setStaffNotified: (notified: boolean) => void;
   setVoiceIntakeCompleted: (completed: boolean) => void;
+
+  // Slice 4b: Appointment setters
+  setAppointmentSlot: (timeSlot: string) => void;
+  confirmAppointment: () => void;
 
   // Slice 5: AYUSH setters
   setAyushIntake: (state: AyushIntakeState) => void;
@@ -385,14 +424,31 @@ const getInitialAudioEnabled = (): boolean => {
 };
 
 const defaultState: PatientSessionState = {
+  priority: 'NORMAL',
+  emergencyStatus: 'NONE',
+  emergencyReason: undefined,
+  emergencyTriggeredAt: undefined,
+
   language: getInitialLanguage(),
-  identificationMethod: null,
-  abhaId: '',
-  patient: null,
+  identificationMethod: 'abha',
+  abhaId: '91-4820-8834-1290',
+  patient: {
+    id: 'pat-demo-rajesh-001',
+    name: 'Rajesh Sharma',
+    age: '52',
+    gender: 'Male',
+    mobile: '9876543210',
+    district: 'Pune',
+    state: 'Maharashtra',
+  },
   audioEnabled: getInitialAudioEnabled(),
-  consent: { accepted: false },
-  chiefComplaint: { primaryComplaint: '' },
+  consent: { accepted: true },
+  chiefComplaint: {
+    primaryComplaint: 'Burning sensation in the upper abdomen, worse after meals.',
+    voiceTranscript: 'I have had a burning sensation in my stomach for 5 days, and it gets worse after eating.',
+  },
   voiceIntake: defaultVoiceIntake,
+  appointment: defaultAppointmentState,
   ayushIntake: defaultAyushIntake,
   medicationHistory: defaultMedicationHistory,
   allergyHistory: defaultAllergyHistory,
@@ -401,11 +457,11 @@ const defaultState: PatientSessionState = {
   submission: defaultSubmissionState,
   consultation: defaultConsultationState,
   caseClosure: defaultCaseClosureState,
-  patientId: undefined,
-  uhid: undefined,
+  patientId: 'pat-demo-rajesh-001',
+  uhid: 'UHID-2026-DL-8834',
   encounterId: undefined,
   queueEntryId: undefined,
-  tokenNumber: undefined,
+  tokenNumber: 42,
   clinicalCaseState: null,
   lastClinicalTurn: null,
   conversationHistory: [],
@@ -455,6 +511,31 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
 
   const clearSession = () => setState(defaultState);
 
+  // ─── Emergency Setters ──────────────────────────────────────────────────
+  const triggerEmergency = (reason: string) => {
+    setState(s => {
+      const newState = {
+        ...s,
+        priority: 'CRITICAL' as const,
+        emergencyStatus: 'TRIGGERED' as const,
+        emergencyReason: reason,
+        emergencyTriggeredAt: new Date().toISOString()
+      };
+      
+      // Inject into dashboard mock state
+      MockDoctorCaseProvider.injectEmergencyCase(newState);
+      
+      return newState;
+    });
+  };
+
+  const acknowledgeEmergency = () =>
+    setState(s => ({ 
+      ...s, 
+      priority: 'NORMAL' as const,
+      emergencyStatus: 'ACKNOWLEDGED' as const 
+    }));
+
   // Stage 2 Relational setters
   const setPatientId = (patientId?: string) =>
     setState(s => ({ ...s, patientId }));
@@ -496,8 +577,37 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
       voiceIntake: {
         ...s.voiceIntake,
         activeSelectedOption: option,
+        activeSelectedOptions: [option],
         activeIsRedFlag: isRedFlag,
         pendingConfirmation: true,
+      },
+    }));
+
+  const setActiveSelectedOptions = (options: string[], isRedFlag: boolean) =>
+    setState(s => ({
+      ...s,
+      voiceIntake: {
+        ...s.voiceIntake,
+        activeSelectedOptions: options,
+        activeSelectedOption: options.join(', '),
+        activeIsRedFlag: isRedFlag,
+        pendingConfirmation: true,
+      },
+    }));
+
+  const setVoiceQuestionIndex = (index: number) =>
+    setState(s => ({
+      ...s,
+      currentConversationTurn: index + 1,
+      voiceIntake: {
+        ...s.voiceIntake,
+        currentQuestionIndex: index,
+        activeInputMethod: undefined,
+        activeTranscript: undefined,
+        activeSelectedOption: undefined,
+        activeSelectedOptions: undefined,
+        pendingConfirmation: false,
+        activeIsRedFlag: false,
       },
     }));
 
@@ -524,12 +634,14 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
   const advanceVoiceQuestion = () =>
     setState(s => ({
       ...s,
+      currentConversationTurn: Math.min(s.currentConversationTurn + 1, 8),
       voiceIntake: {
         ...s.voiceIntake,
-        currentQuestionIndex: s.voiceIntake.currentQuestionIndex + 1,
+        currentQuestionIndex: Math.min(s.voiceIntake.currentQuestionIndex + 1, 7),
         activeInputMethod: undefined,
         activeTranscript: undefined,
         activeSelectedOption: undefined,
+        activeSelectedOptions: undefined,
         pendingConfirmation: false,
         activeIsRedFlag: false,
       },
@@ -543,6 +655,7 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
         activeInputMethod: undefined,
         activeTranscript: undefined,
         activeSelectedOption: undefined,
+        activeSelectedOptions: undefined,
         pendingConfirmation: false,
         activeIsRedFlag: false,
       },
@@ -564,6 +677,20 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
     setState(s => ({
       ...s,
       voiceIntake: { ...s.voiceIntake, completed },
+    }));
+
+  // ─── Slice 4b: Appointment setters ───────────────────────────────────────
+
+  const setAppointmentSlot = (timeSlot: string) =>
+    setState(s => ({
+      ...s,
+      appointment: { ...s.appointment, timeSlot },
+    }));
+
+  const confirmAppointment = () =>
+    setState(s => ({
+      ...s,
+      appointment: { ...s.appointment, confirmed: true },
     }));
 
   // ─── Slice 5: AYUSH setters ───────────────────────────────────────────────
@@ -865,12 +992,13 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
   const advanceConversationTurn = () =>
     setState(s => ({
       ...s,
-      currentConversationTurn: s.currentConversationTurn + 1,
+      currentConversationTurn: Math.min(s.currentConversationTurn + 1, 8),
       voiceIntake: {
         ...s.voiceIntake,
-        currentQuestionIndex: Math.min(s.voiceIntake.currentQuestionIndex + 1, 4),
+        currentQuestionIndex: Math.min(s.voiceIntake.currentQuestionIndex + 1, 7),
         activeTranscript: '',
         activeSelectedOption: undefined,
+        activeSelectedOptions: undefined,
       },
     }));
 
@@ -920,7 +1048,7 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
         isCaseFinalized: true,
         voiceIntake: {
           ...s.voiceIntake,
-          isCompleted: true,
+          completed: true,
           redFlagTriggered: s.voiceIntake.redFlagTriggered || result.is_emergency,
         },
       }));
@@ -945,6 +1073,8 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
       setConsent,
       setChiefComplaint,
       clearSession,
+      triggerEmergency,
+      acknowledgeEmergency,
       setPatientId,
       setUhid,
       setEncounterId,
@@ -953,6 +1083,8 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
       setActiveVoiceInput,
       setActiveTranscript,
       setActiveSelectedOption,
+      setActiveSelectedOptions,
+      setVoiceQuestionIndex,
       setPendingConfirmation,
       addVoiceResponse,
       advanceVoiceQuestion,
@@ -960,6 +1092,8 @@ export function PatientSessionProvider({ children }: { children: ReactNode }) {
       setRedFlagTriggered,
       setStaffNotified,
       setVoiceIntakeCompleted,
+      setAppointmentSlot,
+      confirmAppointment,
       setAyushIntake,
       addAyushResponse,
       advanceAyushQuestion,
@@ -1011,4 +1145,5 @@ export function usePatientSession() {
   }
   return context;
 }
+
 

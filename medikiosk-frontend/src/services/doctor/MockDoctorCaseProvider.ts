@@ -29,7 +29,10 @@ export interface DoctorCase {
   status: 'waiting' | 'in-consultation' | 'completed' | 'closed';
 }
 
+import { DEMO_DOCTOR_CASES_RECORD } from '@/demo/data/demoDoctorDataset';
+
 const MOCK_DB: Record<string, DoctorCase> = {
+  ...DEMO_DOCTOR_CASES_RECORD,
   'MEDI-OPD-2026-00041': {
     caseId: 'MEDI-OPD-2026-00041',
     patientName: 'Savitri Devi',
@@ -196,5 +199,27 @@ export class MockDoctorCaseProvider {
         status: 'waiting',
       };
     }
+  }
+
+  static injectEmergencyCase(session: PatientSessionState): void {
+    const caseId = `EMERGENCY-${Date.now()}`;
+    
+    MOCK_DB[caseId] = {
+      caseId: caseId,
+      patientName: session.patient?.name || 'Unknown Patient (Emergency)',
+      age: session.patient?.age || 0,
+      gender: session.patient?.gender || 'unknown',
+      mobile: session.patient?.mobile,
+      abhaId: session.abhaId,
+      chiefComplaint: `[EMERGENCY TRIGGERED] ${session.emergencyReason || 'Immediate Medical Assistance Required'}`,
+      
+      voiceResponses: [],
+      ayushResponses: [],
+      documents: [],
+      
+      redFlagTriggered: true, // Forces "Attention Required" status
+      submittedAt: session.emergencyTriggeredAt || new Date().toISOString(),
+      status: 'waiting', // Appears in active patients
+    };
   }
 }

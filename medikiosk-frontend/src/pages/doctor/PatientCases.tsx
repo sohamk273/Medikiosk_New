@@ -5,10 +5,12 @@ import { MockPatientCaseProvider } from '@/services/doctor/MockPatientCaseProvid
 import type { PatientRecord } from '@/services/doctor/MockPatientCaseProvider';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
 import { MockDoctorCaseProvider } from '@/services/doctor/MockDoctorCaseProvider';
+import { useTranslation } from '@/i18n';
 
 export default function PatientCases() {
   const navigate = useNavigate();
   const session = usePatientSession();
+  const { language } = useTranslation();
 
   const [records, setRecords] = useState<PatientRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<PatientRecord[]>([]);
@@ -111,7 +113,7 @@ export default function PatientCases() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-slate-200 pb-4">
         <div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight">Patient Cases</h1>
-          <p className="text-slate-500 font-medium mt-1">मरीज़ के मामले</p>
+          {language !== 'en' && <p className="text-slate-500 font-medium mt-1">मरीज़ के मामले</p>}
         </div>
         
         <div className="flex items-center gap-4 text-sm font-bold text-slate-600">
@@ -232,15 +234,16 @@ export default function PatientCases() {
                 
                 {/* PATIENT INFO */}
                 <div className="flex items-center gap-4 flex-1">
-                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
-                    <User className="w-6 h-6" />
+                  <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                    <User className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-lg text-slate-800 leading-tight mb-1">{patient.name}</h3>
-                    <p className="text-sm text-slate-500 font-medium">{patient.age} years • {patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}</p>
-                    <div className="flex items-center gap-3 mt-2 text-xs font-mono text-slate-500">
-                      <span className="bg-slate-100 px-2 py-1 rounded">📞 {maskMobile(patient.mobile)}</span>
-                      <span className="bg-slate-100 px-2 py-1 rounded">🆔 {maskAbha(patient.abhaId)}</span>
+                    <h3 className="font-bold text-base text-slate-800 leading-tight mb-1">{patient.name}</h3>
+                    <p className="text-xs text-slate-500 font-medium">{patient.age} years • {patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}</p>
+                    <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500 font-mono">
+                      <span>Mobile: {maskMobile(patient.mobile)}</span>
+                      <span className="text-slate-300">•</span>
+                      <span>ABHA: {maskAbha(patient.abhaId)}</span>
                     </div>
                   </div>
                 </div>
@@ -249,30 +252,39 @@ export default function PatientCases() {
                 <div className="flex-1 min-w-0 bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Latest Visit</span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">{new Date(patient.latestVisit).toLocaleDateString()}</span>
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase">{new Date(patient.latestVisit).toLocaleDateString()}</span>
                   </div>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="font-mono text-xs font-bold text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded">{patient.activeCaseId || patient.encounters[0]?.caseId}</span>
                     {getStatusDisplay(patient.currentStatus)}
+                    {patient.latestConcern?.includes('[EMERGENCY TRIGGERED]') && (
+                      <span className="bg-rose-50 text-rose-800 border border-rose-200 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
+                        CRITICAL
+                      </span>
+                    )}
                   </div>
-                  <p className="text-sm font-medium text-slate-700 truncate" title={patient.latestConcern}>
-                    {patient.latestConcern || 'No chief complaint recorded'}
+                  <p className={`text-xs font-medium truncate ${patient.latestConcern?.includes('[EMERGENCY TRIGGERED]') ? 'text-rose-700 font-bold' : 'text-slate-700'}`} title={patient.latestConcern}>
+                    {patient.latestConcern?.replace('[EMERGENCY TRIGGERED]', '').trim() || 'No chief complaint recorded'}
                   </p>
                 </div>
 
                 {/* STATUS & ACTION */}
                 <div className="flex flex-col md:items-end justify-between gap-4 shrink-0">
                   <div className="flex flex-col md:items-end gap-1">
-                    <span className="text-sm font-bold text-slate-700">{patient.totalVisits} {patient.totalVisits === 1 ? 'visit' : 'visits'}</span>
+                    <span className="text-xs font-bold text-slate-700">{patient.totalVisits} {patient.totalVisits === 1 ? 'visit' : 'visits'}</span>
                     {patient.attentionRequired && (
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 uppercase tracking-widest bg-red-100 px-2 py-1 rounded-full">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-rose-700 uppercase tracking-wider bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
                         <ShieldAlert className="w-3 h-3" /> Attention Required
                       </span>
                     )}
                   </div>
                   <button 
                     onClick={() => navigate(`/doctor/patient/${patient.patientId}`)}
-                    className="w-full md:w-auto bg-[#0D9488]/10 text-[#0D9488] px-6 py-2 rounded-xl font-bold hover:bg-[#0D9488]/20 transition-colors flex items-center justify-center gap-2"
+                    className={`w-full md:w-auto px-6 py-2 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors ${
+                      patient.latestConcern?.includes('[EMERGENCY TRIGGERED]')
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : 'bg-[#0D9488]/10 text-[#0D9488] hover:bg-[#0D9488]/20'
+                    }`}
                   >
                     View Record <FileText className="w-4 h-4" />
                   </button>

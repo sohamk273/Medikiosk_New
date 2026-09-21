@@ -47,6 +47,7 @@ async def _handle_clinical_turn(request: ClinicalTurnRequest) -> ClinicalTurnRes
             transcript=transcript,
             language=lang,
             current_case_state=request.case_state,
+            turn_number=request.turn_number,
         )
         return response
     except ValueError as val_err:

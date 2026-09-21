@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Stethoscope, ArrowRight, Volume2, ShieldCheck, HeartHandshake } from 'lucide-react';
+import { ArrowRight, Volume2, ShieldCheck, HeartHandshake } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useKioskScreen } from '@/context/KioskScreenContext';
 
@@ -13,70 +13,89 @@ export default function Welcome() {
 
   useKioskScreen({
     onContinue: handleStart,
-    onBack: () => {},
+    onBack: () => { },
     isBackDisabled: true,
-    audioPrompt: t('welcome.audioGuidance') || 'Welcome to MediKiosk. Tap Start Registration to begin.',
+    audioPrompt: t('welcome.audioGuidance') || 'Welcome to Swasthya Sahayak. Tap Start Registration to begin.',
   });
 
   return (
-    <div className="w-full max-w-5xl mx-auto pt-12 px-6 flex flex-col items-center text-center">
-      {/* Hospital Logo & Badge */}
-      <div className="w-28 h-28 bg-[#064E3B] text-white rounded-3xl flex items-center justify-center mb-8 shadow-xl shadow-emerald-950/10 border-4 border-emerald-100">
-        <Stethoscope className="w-14 h-14" />
-      </div>
-
-      <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-200 px-4 py-1.5 rounded-full text-sm font-bold mb-6">
-        <ShieldCheck className="w-4 h-4 text-emerald-600" />
-        <span>Ayushman Bharat Digital Health Mission (ABDM) Enabled</span>
-      </div>
-
-      <h1 className="text-5xl font-black text-primary tracking-tight mb-4 max-w-3xl leading-tight">
-        {t('welcome.title')}
-      </h1>
-
-      <p className="text-xl text-slate-600 mb-10 max-w-2xl font-medium">
-        {t('welcome.subtitle')}
-      </p>
-
-      {/* Primary Action Button */}
-      <button
-        type="button"
-        onClick={handleStart}
-        className="w-full max-w-md bg-[#064E3B] hover:bg-[#064E3B]/90 text-white py-6 px-8 rounded-3xl font-black text-2xl flex items-center justify-center gap-4 transition-all shadow-xl hover:shadow-2xl active:scale-98 shadow-emerald-950/20 mb-8"
-      >
-        <span>{t('welcome.startRegistration')}</span>
-        <ArrowRight className="w-8 h-8" />
-      </button>
-
-      {/* Feature Highlights Grid */}
-      <div className="grid grid-cols-3 gap-6 w-full max-w-4xl mt-6 text-left">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-            <Volume2 className="w-6 h-6" />
-          </div>
-          <div>
-            <h4 className="font-bold text-slate-800 text-base mb-1">Voice AI Enabled</h4>
-            <p className="text-xs text-slate-500">Speak naturally in Hindi, Marathi, or English</p>
-          </div>
+    <div
+      className="w-full flex-1 flex flex-col items-center justify-center text-center relative overflow-y-auto overflow-x-hidden bg-cover bg-center bg-no-repeat px-4 py-2"
+      style={{ backgroundImage: "url('/landing-page.png')" }}
+    >
+      <div className="w-full max-w-[1000px] mx-auto flex flex-col items-center justify-center text-center z-10 bg-transparent pt-4 pb-6">
+        {/* ABDM Trust Badge */}
+        <div className="inline-flex items-center gap-2 bg-white text-medigreen-800 border border-medigreen-200/80 px-4 py-2 rounded-full text-[13px] font-bold mb-6 shadow-sm">
+          <ShieldCheck className="w-4 h-4 text-medigreen-600" />
+          <span>Ayushman Bharat Digital Health Mission (ABDM) Compliant</span>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <h4 className="font-bold text-slate-800 text-base mb-1">ABHA QR Scan</h4>
-            <p className="text-xs text-slate-500">Instant registration with your health card</p>
-          </div>
+        {/* Center Logo Mark */}
+        <div className="mb-5 flex justify-center w-full">
+          <img
+            src="/logo.png"
+            alt="Swasthya Sahayak Logo"
+            className="h-[100px] w-auto object-contain drop-shadow-md"
+          />
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
-          <div className="p-3 bg-teal-50 text-teal-600 rounded-xl">
-            <HeartHandshake className="w-6 h-6" />
+        {/* Main Title & Subtitle */}
+        <h1 className="text-4xl sm:text-[48px] font-black text-navy-900 tracking-tight mb-2 leading-tight">
+          Welcome to <span className="text-[#008f71]">Swasthya Sahayak</span>
+        </h1>
+
+        <p className="text-xl sm:text-[24px] text-slate-600 mb-3 font-bold">
+          Your Smart Digital OPD Companion
+        </p>
+
+        <p className="text-sm sm:text-[14px] text-slate-500 font-medium mb-8 flex items-center gap-3">
+          <span>Guided by Tradition</span>
+          <span className="w-1 h-3.5 bg-slate-300 rounded-full"></span>
+          <span>Powered by Technology</span>
+          <span className="w-1 h-3.5 bg-slate-300 rounded-full"></span>
+          <span>Caring for Every Indian</span>
+        </p>
+
+        {/* Primary Action Button */}
+        <button
+          type="button"
+          onClick={handleStart}
+          className="w-full max-w-[360px] bg-[#008f71] hover:bg-[#007a60] text-white py-4 px-8 rounded-full font-bold text-[20px] flex items-center justify-center gap-3 transition-all shadow-xl hover:shadow-2xl active:scale-95 mb-8 cursor-pointer"
+        >
+          <span>Start Your Health Journey</span>
+          <ArrowRight className="w-6 h-6" />
+        </button>
+
+        {/* Feature Highlights Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full text-left max-w-[920px]">
+          <div className="p-5 flex items-center gap-4 bg-white/95 backdrop-blur-sm shadow-sm rounded-[24px] border border-slate-100">
+            <div className="w-[52px] h-[52px] shrink-0 flex items-center justify-center bg-[#f0f4ff] text-[#3b82f6] rounded-full">
+              <Volume2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-navy-900 text-[15px] mb-1 leading-snug">Voice AI Enabled</h4>
+              <p className="text-[13px] text-slate-500 leading-tight">Speak naturally in Hindi,<br />Marathi, or English</p>
+            </div>
           </div>
-          <div>
-            <h4 className="font-bold text-slate-800 text-base mb-1">Sahayak Assistance</h4>
-            <p className="text-xs text-slate-500">Hospital volunteers ready to help at any step</p>
+
+          <div className="p-5 flex items-center gap-4 bg-white/95 backdrop-blur-sm shadow-sm rounded-[24px] border border-slate-100">
+            <div className="w-[52px] h-[52px] shrink-0 flex items-center justify-center bg-[#f0fdf4] text-[#22c55e] rounded-full">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-navy-900 text-[15px] mb-1 leading-snug">ABHA QR Scan</h4>
+              <p className="text-[13px] text-slate-500 leading-tight">Instant registration with<br />your health ID card</p>
+            </div>
+          </div>
+
+          <div className="p-5 flex items-center gap-4 bg-white/95 backdrop-blur-sm shadow-sm rounded-[24px] border border-slate-100">
+            <div className="w-[52px] h-[52px] shrink-0 flex items-center justify-center bg-[#f0fdfa] text-[#14b8a6] rounded-full">
+              <HeartHandshake className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-navy-900 text-[15px] mb-1 leading-snug">Sahayak Help</h4>
+              <p className="text-[13px] text-slate-500 leading-tight">Hospital staff ready to<br />assist at any point</p>
+            </div>
           </div>
         </div>
       </div>

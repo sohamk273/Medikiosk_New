@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
-import { AudioGuidanceBanner } from '@/components/kiosk/AudioGuidanceBanner';
 import { VoiceOrb } from '@/components/kiosk/VoiceOrb';
 import { VoiceWaveform } from '@/components/kiosk/VoiceWaveform';
 import { AYUSH_QUESTIONS } from '@/services/ayush/MockAyushProvider';
 import { useTranslation } from '@/i18n';
 import { useKioskScreen } from '@/context/KioskScreenContext';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { CheckCircle2 } from 'lucide-react';
 
 type PageState = 'idle' | 'listening' | 'processing';
 
@@ -103,7 +103,7 @@ export default function Ayush() {
     if (currentIndex > 0) {
       advanceAyushQuestion(currentIndex - 1);
     } else {
-      navigate('/patient/voice-confirmation');
+      navigate('/patient/case-summary');
     }
   };
 
@@ -121,183 +121,138 @@ export default function Ayush() {
   });
 
   return (
-    <div className="w-full">
-      <StepProgressIndicator
-        current={12 + currentIndex}
-        total={24}
-        title={t('ayush.title')}
-      />
-
-      <div className="max-w-5xl mx-auto px-6 pt-6 pb-32">
-        {/* Question Header */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#E6FAF5] text-[#0D9488]">
-              {t('ayush.questionBadge', { current: currentIndex + 1, total: AYUSH_QUESTIONS.length })}
-            </span>
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 font-devanagari">
-            {language === 'hi' ? currentQuestion.questionHindi : currentQuestion.question}
-          </h2>
-          <p className="text-slate-500 text-sm mt-1">
+    <div className="w-full max-w-5xl mx-auto py-2 flex flex-col justify-between">
+      {/* Question Header */}
+      <GlassCard className="p-3.5 mb-2 border-medigreen-200/80 bg-gradient-to-r from-medigreen-50/50 via-white/90 to-teal-50/50">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-medigreen-100 text-medigreen-800 border border-medigreen-300">
+            {t('ayush.questionBadge', { current: currentIndex + 1, total: AYUSH_QUESTIONS.length })}
+          </span>
+          <span className="text-xs font-bold text-mediblue-700">
+            AYUSH Prakriti Assessment
+          </span>
+        </div>
+        <h2 className="text-lg sm:text-xl font-extrabold text-navy-900 font-devanagari">
+          {language === 'hi' ? currentQuestion.questionHindi : currentQuestion.question}
+        </h2>
+        {language !== 'en' && (
+          <p className="text-slate-500 text-xs mt-0.5">
             {language === 'hi' ? currentQuestion.question : currentQuestion.questionHindi}
           </p>
-        </div>
-
-        {/* Audio Banner */}
-        {pageState === 'idle' && (
-          <AudioGuidanceBanner
-            englishText={currentQuestion.question}
-            regionalText={language === 'hi' ? currentQuestion.questionHindi : undefined}
-          />
         )}
+      </GlassCard>
 
-        <div className="grid grid-cols-[280px_1fr] gap-6 mt-4">
-          {/* LEFT: Voice Area */}
+      {/* Audio Banner Removed */}
+      {/* Main Grid: Left Voice AI / Right Touch Option Cards */}
+      <div className="grid grid-cols-12 gap-4 items-start">
+        {/* LEFT: Voice Area (5 cols) */}
+        <div className="col-span-12 lg:col-span-5">
           {pageState === 'idle' ? (
-            <button
-              type="button"
+            <GlassCard
               onClick={handleStartListening}
-              className="rounded-3xl flex flex-col items-center justify-between p-6 min-h-[380px] border transition-all duration-300 bg-[#E6FAF5] border-[#A7F3D0] hover:bg-[#D1F4E8] hover:border-[#0D9488] cursor-pointer w-full focus:outline-none shadow-sm hover:shadow-md"
+              className="p-5 flex flex-col items-center justify-between text-center border-medigreen-300/80 h-[320px] cursor-pointer hover:border-medigreen-500 hover:shadow-lg transition-all"
             >
               <div className="flex items-center justify-between w-full">
-                <span className="text-xs font-bold px-3 py-1 rounded-full bg-white text-[#0D9488] border border-slate-200 shadow-sm">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-medigreen-50 text-medigreen-800 border border-medigreen-200">
                   VOICE AI MODE
                 </span>
-                <span className="text-slate-400 text-sm font-bold">A</span>
+                <span className="text-slate-400 text-xs font-bold">{language === 'en' ? 'EN' : 'अ/A'}</span>
               </div>
-              <div className="flex flex-col items-center gap-4 w-full">
+              <div className="flex flex-col items-center gap-2 my-auto">
                 <VoiceOrb state="idle" />
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-[#0D9488] font-devanagari">
+                <div className="text-center mt-2">
+                  <p className="text-base font-extrabold text-navy-900 font-devanagari">
                     {t('ayush.tapToSpeak')}
                   </p>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-xs">
                     {t('ayush.tapToSpeakSub')}
                   </p>
                 </div>
               </div>
-            </button>
+              <div className="w-full bg-medigreen-50/70 border border-medigreen-200 py-1.5 px-3 rounded-lg text-[11px] text-medigreen-800 font-medium">
+                Tap anywhere on this card to speak your answer
+              </div>
+            </GlassCard>
           ) : (
-            <div className="rounded-3xl flex flex-col items-center justify-between p-6 min-h-[380px] border transition-all duration-500 bg-[#F0FDF9] border-[#0D9488] shadow-sm">
+            <GlassCard className="p-5 flex flex-col items-center justify-between text-center border-medigreen-500 bg-medigreen-50/30 h-[320px]">
               <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-xs font-bold text-red-500 uppercase tracking-wider">
-                    {pageState === 'listening' ? 'Recording' : 'Processing'}
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                  <span className="text-xs font-bold text-rose-600 uppercase">
+                    {pageState === 'listening' ? 'Listening' : 'Processing'}
                   </span>
                 </div>
                 {pageState === 'listening' && (
-                  <span className="text-sm font-mono font-bold text-slate-600 bg-white px-2 py-1 rounded-md border border-slate-200">
+                  <span className="text-xs font-mono font-bold text-navy-900 bg-white px-2 py-0.5 rounded border border-slate-200">
                     {formatTime(timer)}
                   </span>
                 )}
               </div>
-              
-              <div className="flex flex-col items-center gap-6 w-full">
+
+              <div className="flex flex-col items-center gap-3 my-auto">
                 {pageState === 'listening' ? (
                   <>
                     <VoiceOrb state="listening" />
-                    <div className="h-12 w-full flex items-center justify-center opacity-70">
-                      <VoiceWaveform />
-                    </div>
-                    <div className="text-center animate-pulse">
-                      <p className="text-xl font-bold text-slate-700">
-                        {t('voice.listening')}
-                      </p>
-                    </div>
+                    <VoiceWaveform active={true} />
                   </>
                 ) : (
-                  <>
-                    <div className="relative">
-                      <VoiceOrb state="processing" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-full h-full rounded-full border-4 border-[#0D9488] border-t-transparent animate-spin opacity-50" />
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xl font-bold text-slate-700">
-                        {t('voiceProcessing.analyzing')}
-                      </p>
-                      <p className="text-sm text-slate-500 mt-1">Please wait</p>
-                    </div>
-                  </>
+                  <VoiceOrb state="processing" />
                 )}
               </div>
 
-              {pageState === 'listening' && (
-                <button
-                  type="button"
-                  onClick={handleStopListening}
-                  className="w-full py-4 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold text-lg transition-colors flex items-center justify-center gap-2 shadow-sm"
-                >
-                  <span className="w-3 h-3 bg-white rounded-sm" />
-                  {t('voice.doneSpeaking')}
-                </button>
-              )}
-            </div>
+              <button
+                type="button"
+                onClick={handleStopListening}
+                className="w-full bg-gradient-to-r from-medigreen-600 to-emerald-700 text-white py-2.5 rounded-xl font-bold text-sm shadow-md cursor-pointer"
+              >
+                Done Speaking (Save)
+              </button>
+            </GlassCard>
           )}
+        </div>
 
-          {/* RIGHT: Touch Options */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-slate-500 text-sm">?</span>
-              <h3 className="text-lg font-bold text-slate-700">
-                {t('ayush.orChoose')}
-              </h3>
-            </div>
+        {/* RIGHT: Touch Options (7 cols) */}
+        <div className="col-span-12 lg:col-span-7 flex flex-col justify-between h-[320px]">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold text-navy-900 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-medigreen-600" />
+              <span>Touch Options</span>
+            </span>
+            <span className="text-[10px] text-slate-400 font-bold uppercase">
+              Select one option
+            </span>
+          </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              {currentQuestion.touchOptions.map((option) => {
-                const isSelected = selectedOptionId === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => handleTouchSelect(option.id, option.labelHindi)}
-                    className={`
-                      relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 text-center min-h-[100px]
-                      ${isSelected 
-                        ? 'border-[#0D9488] bg-[#F0FDF9]' 
-                        : 'border-slate-200 bg-slate-50 hover:border-[#0D9488]/30 hover:bg-slate-100'}
-                    `}
-                  >
-                    {isSelected && (
-                      <div className="absolute top-3 right-3 w-6 h-6 bg-[#0D9488] rounded-full flex items-center justify-center shadow-sm">
-                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
+          <div className="space-y-2 flex-1 overflow-y-auto pr-1">
+            {currentQuestion.touchOptions.map((opt) => {
+              const isSelected = selectedOptionId === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleTouchSelect(opt.id, opt.labelHindi)}
+                  className={`w-full p-3 rounded-xl border-2 text-left flex items-center justify-between transition-all active:scale-95 cursor-pointer ${isSelected
+                      ? 'border-medigreen-500 bg-medigreen-50/90 shadow-xs'
+                      : 'border-slate-200/80 bg-white hover:border-medigreen-200'
+                    }`}
+                >
+                  <div className="flex-1">
+                    <p className={`text-xs sm:text-sm font-bold font-devanagari ${isSelected ? 'text-medigreen-900' : 'text-navy-900'
+                      }`}>
+                      {language === 'hi' ? opt.labelHindi : opt.label}
+                    </p>
+                    {language !== 'en' && (
+                      <p className="text-slate-500 text-[11px]">
+                        {language === 'hi' ? opt.label : opt.labelHindi}
+                      </p>
                     )}
-                    <span className={`text-lg font-bold mb-1 ${isSelected ? 'text-[#0D9488]' : 'text-slate-700'}`}>
-                      {language === 'hi' ? option.labelHindi : option.label}
-                    </span>
-                    <span className={`text-sm ${isSelected ? 'text-[#0D9488]/80' : 'text-slate-500'}`}>
-                      {language === 'hi' ? option.label : option.labelHindi}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            
-            <div className="mt-auto pt-4">
-              {selectedOptionId ? (
-                <div className="flex items-center gap-2 text-[#0D9488] bg-[#F0FDF9] p-3 rounded-xl border border-[#A7F3D0]">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-semibold text-sm">
-                    {t('ayush.answerSelected')}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-slate-400 p-3">
-                  <span className="font-medium text-sm">
-                    {t('ayush.noOptionSelected')}
-                  </span>
-                </div>
-              )}
-            </div>
+                  </div>
+                  {isSelected && (
+                    <CheckCircle2 className="w-5 h-5 text-medigreen-600 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

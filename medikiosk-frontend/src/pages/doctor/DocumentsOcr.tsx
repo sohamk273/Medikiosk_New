@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef, type ChangeEvent } from 'react';
+import React, { useState, useEffect, useMemo, useRef, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileScan, Search, Upload, Clock, 
@@ -60,7 +60,7 @@ export default function DocumentsOcr() {
 
         const docPromises = queueRes.data.map(async (entry) => {
           const encId = entry.encounter?.id || entry.encounter_id;
-          if (!encId) return [];
+          if (!encId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(encId)) return [];
           const dRes = await apiFetchSafe<any[]>(`/encounters/${encId}/documents`);
           if (dRes.ok && Array.isArray(dRes.data)) {
             return dRes.data.map((d: any) => ({

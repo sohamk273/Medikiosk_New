@@ -504,8 +504,12 @@ class ClinicalCaseTakingEngine:
         # If LLM proposed a question in normal (non-emergency, non-completed) state, use it if compatible
         if not is_emergency and not is_complete and llm_question:
             next_reg_q = llm_question
+            if is_gemini and 'gemini_res' in locals() and gemini_res.next_question:
+                next_en_q = gemini_res.next_question
             if llm_question_type:
                 q_type = llm_question_type
+
+        suggested_opts = gemini_res.suggested_options if is_gemini and 'gemini_res' in locals() else []
 
         return ClinicalTurnResponse(
             success=True,
@@ -516,6 +520,7 @@ class ClinicalCaseTakingEngine:
             next_question=next_en_q,
             next_question_regional=next_reg_q,
             next_question_type=q_type,
+            suggested_options=suggested_opts,
             missing_information=missing_dimensions,
             red_flags=updated_state.red_flags,
             requires_emergency_attention=is_emergency,

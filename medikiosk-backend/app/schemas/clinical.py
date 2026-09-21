@@ -71,6 +71,7 @@ class ClinicalTurnRequest(BaseModel):
     transcript: str = Field(..., description="Patient utterance or transcribed voice response")
     language: str = Field("en", description="Language code: en, hi, mr")
     case_state: Optional[ClinicalCaseState] = Field(None, description="Current accumulated case state")
+    turn_number: int = Field(1, description="Current conversation turn number")
 
 
 class ClinicalTurnResponse(BaseModel):
@@ -85,6 +86,7 @@ class ClinicalTurnResponse(BaseModel):
     next_question: str = Field(..., description="Next conversational intake question in English")
     next_question_regional: Optional[str] = Field(None, description="Next question localized in patient's language")
     next_question_type: str = Field(..., description="Category of next question (LOCATION, DURATION, SEVERITY, COMPLETE)")
+    suggested_options: List[str] = Field(default_factory=list, description="List of dynamic suggested short options for touch UI")
     missing_information: List[str] = Field(default_factory=list, description="List of clinical fields still missing")
     red_flags: List[RedFlagEntity] = Field(default_factory=list, description="Any critical flags active in case")
     requires_emergency_attention: bool = Field(False, description="True if any red-flag emergency is detected")

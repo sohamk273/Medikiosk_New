@@ -3,7 +3,7 @@ export const en = {
     "continue": "Continue",
     "back": "Back",
     "repeatAudio": "Repeat Audio",
-    "needHelp": "Need Help / Sahayak",
+    "needHelp": "Sahayak Assist",
     "emergencyHelp": "Emergency Help",
     "done": "Done",
     "cancel": "Cancel",

@@ -3,7 +3,7 @@ export const mr = {
     "continue": "पुढे जा",
     "back": "मागे जा",
     "repeatAudio": "पुन्हा ऐका",
-    "needHelp": "मदत हवी आहे / सहाय्यक",
+    "needHelp": "सहायक असिस्ट",
     "emergencyHelp": "तातडीची मदत",
     "done": "पूर्ण",
     "cancel": "रद्द करा",

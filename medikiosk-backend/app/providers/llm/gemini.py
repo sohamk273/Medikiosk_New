@@ -43,6 +43,7 @@ class ClinicalTurnLLMResult:
         next_question: str,
         next_question_regional: Optional[str] = None,
         next_question_type: str = "GENERAL",
+        suggested_options: Optional[List[str]] = None,
         is_case_complete: bool = False,
         raw_response: Optional[Dict[str, Any]] = None,
     ):
@@ -51,6 +52,7 @@ class ClinicalTurnLLMResult:
         self.next_question = next_question
         self.next_question_regional = next_question_regional
         self.next_question_type = next_question_type
+        self.suggested_options = suggested_options or []
         self.is_case_complete = is_case_complete
         self.raw_response = raw_response or {}
 
@@ -230,11 +232,12 @@ Extract structured entities as JSON:
             "2. DO NOT diagnose diseases or prescribe treatments.\n"
             "3. Identify missing information needed for a clinical intake (e.g., Duration, Severity, Location, Character, Associated Symptoms, Medications, Allergies).\n"
             "4. NEVER ask for information that has already been provided in the current_case_state or transcript.\n"
-            "5. Ask ONE concise, empathetic question to collect the most clinically relevant missing dimension.\n"
+            "5. Ask ONE concise, empathetic question to collect the most clinically relevant missing dimension. The question MUST be natural, contextual, and directly relate to what the patient just said.\n"
             "6. Provide next_question in English and next_question_regional in the patient's language (Hindi or Marathi if requested).\n"
             "7. If sufficient history is collected or 4+ turns completed, mark is_intake_complete=true and set question_type to 'COMPLETED'.\n"
             "8. If a critical red-flag emergency is detected (e.g. crushing chest pain, severe shortness of breath, syncope, massive bleeding), mark is_red_flag=true and question_type='EMERGENCY'.\n"
-            "9. Return valid JSON only."
+            "9. You MUST ALWAYS generate an array of 4 to 6 concise, relatable 'suggested_options' (max 4-5 words each) corresponding to the next_question, allowing the user to simply tap an answer. Never leave this empty.\n"
+            "10. Return valid JSON only."
         )
 
         user_prompt = f"""
@@ -266,6 +269,7 @@ Return JSON:
   "missing_information": [string],
   "next_question_en": string,
   "next_question_regional": string,
+  "suggested_options": [string],
   "question_type": string ("LOCATION" | "DURATION" | "SEVERITY" | "CHARACTER" | "ASSOCIATED_SYMPTOMS" | "MEDICATIONS" | "ALLERGIES" | "MEDICAL_HISTORY" | "COMPLETED" | "EMERGENCY"),
   "is_intake_complete": boolean
 }}
@@ -303,6 +307,7 @@ Return JSON:
             next_question=parsed.get("next_question_en", "Please describe any additional symptoms."),
             next_question_regional=parsed.get("next_question_regional"),
             next_question_type=parsed.get("question_type", "GENERAL"),
+            suggested_options=parsed.get("suggested_options", []),
             is_case_complete=parsed.get("is_intake_complete", False),
             raw_response=parsed,
         )

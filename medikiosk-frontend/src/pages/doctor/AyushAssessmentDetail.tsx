@@ -149,14 +149,14 @@ export default function AyushAssessmentDetail() {
                 <h1 className="text-2xl font-black text-slate-800 tracking-tight">{record.patientName}</h1>
                 <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded">{record.patientId}</span>
               </div>
-              <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-slate-600 font-medium">
+              <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-slate-500 font-mono">
                 <span>{record.age} years • {record.gender.charAt(0).toUpperCase() + record.gender.slice(1)}</span>
-                <span className="text-slate-300">|</span>
-                <span>📞 {record.maskedMobile}</span>
-                <span className="text-slate-300">|</span>
-                <span>🆔 {record.maskedAbhaId}</span>
-                <span className="text-slate-300">|</span>
-                <span className="font-mono bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-xs">{record.caseId}</span>
+                <span className="text-slate-300">•</span>
+                <span>Mobile: {record.maskedMobile}</span>
+                <span className="text-slate-300">•</span>
+                <span>ABHA: {record.maskedAbhaId}</span>
+                <span className="text-slate-300">•</span>
+                <span className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">{record.caseId}</span>
               </div>
             </div>
           </div>

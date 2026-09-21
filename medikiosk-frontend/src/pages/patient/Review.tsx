@@ -1,25 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  User, 
-  Activity, 
-  HeartPulse, 
-  Pill, 
-  AlertTriangle, 
-  FileText, 
-  Mic, 
-  CheckCircle2, 
+import {
+  User,
+  Activity,
+  HeartPulse,
+  Pill,
+  Mic,
+  CheckCircle2,
   Edit2
 } from 'lucide-react';
 import { usePatientSession } from '@/features/patient/PatientSessionContext';
-import { AYUSH_QUESTIONS } from '@/services/ayush/MockAyushProvider';
-import { StepProgressIndicator } from '@/components/ui/StepProgressIndicator';
 import { useTranslation } from '@/i18n';
 import { useKioskScreen } from '@/context/KioskScreenContext';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { CompletenessMeter } from '@/demo/components/CompletenessMeter';
+import { QuickClarifyModal } from '@/demo/components/QuickClarifyModal';
+import { EvidenceDrawer } from '@/demo/components/EvidenceDrawer';
 
 export default function Review() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const {
     patient,
     abhaId,
@@ -39,8 +39,8 @@ export default function Review() {
     setIsSubmitting(true);
     setReviewConfirmed(true);
     setTimeout(() => {
-      navigate('/patient/submit');
-    }, 400);
+      navigate('/patient/appointment');
+    }, 300);
   };
 
   const handleBack = () => {
@@ -50,266 +50,211 @@ export default function Review() {
   useKioskScreen({
     onContinue: handleConfirm,
     onBack: handleBack,
-    continueLabelKey: 'review.confirmAndSubmit',
+    continueLabelKey: 'Schedule Appointment',
     isContinueDisabled: isSubmitting,
-    audioPrompt: t('review.audioGuidance') || 'Please review your complete intake summary on the screen. Tap Confirm and Submit when ready.',
+    audioPrompt: 'Please review your complete intake summary on the screen. Tap Schedule Appointment to select your consultation time slot.',
   });
 
   return (
-    <div className="w-full">
-      <StepProgressIndicator
-        current={17}
-        total={24}
-        title={t('review.title')}
-      />
-
-      <div className="max-w-4xl mx-auto px-6 pt-6 pb-32 space-y-6">
-        {/* Top Summary Banner */}
-        <div className="bg-[#E6FAF5] border border-[#A7F3D0] rounded-3xl p-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-primary mb-1">
-              {t('review.title')}
-            </h2>
-            <p className="text-slate-600 text-sm">
-              {t('review.subtitle')}
-            </p>
-          </div>
-          <span className="bg-white/80 text-[#0D9488] font-bold text-xs px-4 py-2 rounded-full border border-[#A7F3D0]">
-            Ready for Final Verification
-          </span>
+    <div className="w-full max-w-5xl mx-auto py-2 flex flex-col justify-between">
+      {/* Header Banner */}
+      <GlassCard className="p-3.5 mb-2 flex items-center justify-between border-medigreen-200/80 bg-gradient-to-r from-medigreen-50/50 via-white/90 to-teal-50/50">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-black text-navy-900 mb-0.5 font-devanagari">
+            {t('review.title')}
+          </h2>
+          <p className="text-slate-600 text-xs">
+            {t('review.subtitle')}
+          </p>
         </div>
+        <span className="bg-medigreen-100 text-medigreen-800 font-extrabold text-xs px-3 py-1 rounded-full border border-medigreen-300">
+          Ready for Final Verification
+        </span>
+      </GlassCard>
 
+      {/* Case Completeness Gauge & Quick-Clarify (Module 4 USP) */}
+      <div className="mb-3">
+        <CompletenessMeter />
+      </div>
+
+      <QuickClarifyModal />
+      <EvidenceDrawer />
+
+      {/* 2-Column Summary Cards Grid */}
+      <div id="sahayak-target-review-summary" className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
         {/* 1. Patient Profile Card */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-                <User className="w-5 h-5 text-blue-600" />
+        <GlassCard className="p-3.5">
+          <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-mediblue-50 flex items-center justify-center">
+                <User className="w-4 h-4 text-mediblue-600" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800">
+              <h3 className="text-xs font-bold text-navy-900">
                 {t('review.patientProfile')}
               </h3>
             </div>
             <button
               type="button"
               onClick={() => navigate('/patient/profile')}
-              className="flex items-center gap-1 text-sm font-bold text-[#0D9488] hover:underline"
+              className="flex items-center gap-1 text-[11px] font-bold text-medigreen-700 hover:underline cursor-pointer"
             >
-              <Edit2 className="w-4 h-4" /> {t('review.edit')}
+              <Edit2 className="w-3 h-3" /> {t('review.edit')}
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <span className="text-slate-400 block">{t('profile.fullName')}</span>
-              <span className="font-bold text-slate-800">{patient?.name || 'Anonymous Patient'}</span>
+              <span className="text-[10px] text-slate-400 block">{t('profile.fullName')}</span>
+              <span className="font-bold text-navy-900">{patient?.name || 'Anonymous Patient'}</span>
             </div>
             <div>
-              <span className="text-slate-400 block">{t('profile.age')} & {t('profile.gender')}</span>
-              <span className="font-bold text-slate-800">
-                {patient?.age ? `${patient.age} Yrs` : 'N/A'} ? {patient?.gender || 'N/A'}
+              <span className="text-[10px] text-slate-400 block">{t('profile.age')} &amp; {t('profile.gender')}</span>
+              <span className="font-bold text-navy-900">
+                {patient?.age ? `${patient.age} Yrs` : 'N/A'} · {patient?.gender || 'N/A'}
               </span>
             </div>
             <div>
-              <span className="text-slate-400 block">{t('profile.mobile')}</span>
-              <span className="font-bold text-slate-800">{patient?.mobile || 'N/A'}</span>
+              <span className="text-[10px] text-slate-400 block">{t('profile.mobile')}</span>
+              <span className="font-bold text-navy-900">{patient?.mobile || 'N/A'}</span>
             </div>
             <div>
-              <span className="text-slate-400 block">ID Method / ABHA</span>
-              <span className="font-mono text-slate-700">
+              <span className="text-[10px] text-slate-400 block">ID Method / ABHA</span>
+              <span className="font-mono text-slate-700 text-[11px]">
                 {abhaId ? abhaId : identificationMethod === 'opd' ? 'OPD Slip' : 'New Registration'}
               </span>
             </div>
           </div>
-        </div>
+        </GlassCard>
 
-        {/* 2. Symptoms & Voice Intake */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#E6FAF5] flex items-center justify-center">
-                <Activity className="w-5 h-5 text-[#0D9488]" />
+        {/* 2. Chief Complaint & Symptoms */}
+        <GlassCard className="p-3.5">
+          <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-medigreen-50 flex items-center justify-center">
+                <Activity className="w-4 h-4 text-medigreen-600" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800">
+              <h3 className="text-xs font-bold text-navy-900">
                 {t('review.symptomsIntake')}
               </h3>
             </div>
             <button
               type="button"
               onClick={() => navigate('/patient/chief-complaint')}
-              className="flex items-center gap-1 text-sm font-bold text-[#0D9488] hover:underline"
+              className="flex items-center gap-1 text-[11px] font-bold text-medigreen-700 hover:underline cursor-pointer"
             >
-              <Edit2 className="w-4 h-4" /> {t('review.edit')}
+              <Edit2 className="w-3 h-3" /> {t('review.edit')}
             </button>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-1.5 text-xs">
             <div>
-              <span className="text-xs font-bold text-slate-400 block">PRIMARY CHIEF COMPLAINT</span>
-              <p className="font-bold text-slate-800 text-base mt-0.5">
+              <span className="text-[10px] font-bold text-slate-400 block">PRIMARY COMPLAINT</span>
+              <p className="font-bold text-navy-900 font-devanagari">
                 {chiefComplaint.primaryComplaint || 'General health consultation'}
               </p>
             </div>
 
             {voiceIntake.responses.length > 0 && (
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                <span className="text-xs font-bold text-slate-400 block">RECORDED RESPONSES</span>
-                {voiceIntake.responses.map((resp, idx) => (
-                  <div key={idx} className="bg-slate-50 p-3 rounded-xl flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <Mic className="w-4 h-4 text-[#0D9488]" />
-                      <span className="text-slate-700">{resp.transcript || resp.selectedOption}</span>
-                    </div>
-                    {resp.isRedFlag && (
-                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">Alert</span>
-                    )}
-                  </div>
-                ))}
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded-lg">
+                <Mic className="w-3 h-3 text-medigreen-600 shrink-0" />
+                <span className="truncate">{voiceIntake.responses[0]?.transcript || 'Voice intake saved'}</span>
               </div>
             )}
           </div>
-        </div>
+        </GlassCard>
 
         {/* 3. AYUSH Assessment */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-                <HeartPulse className="w-5 h-5 text-amber-600" />
+        <GlassCard className="p-3.5">
+          <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-teal-50 flex items-center justify-center">
+                <HeartPulse className="w-4 h-4 text-teal-600" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800">
+              <h3 className="text-xs font-bold text-navy-900">
                 {t('review.ayushAssessment')}
               </h3>
             </div>
             <button
               type="button"
               onClick={() => navigate('/patient/ayush')}
-              className="flex items-center gap-1 text-sm font-bold text-[#0D9488] hover:underline"
+              className="flex items-center gap-1 text-[11px] font-bold text-medigreen-700 hover:underline cursor-pointer"
             >
-              <Edit2 className="w-4 h-4" /> {t('review.edit')}
+              <Edit2 className="w-3 h-3" /> {t('review.edit')}
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-2 gap-1.5 text-xs">
             {ayushIntake.responses.length > 0 ? (
-              ayushIntake.responses.map((r, i) => {
-                const q = AYUSH_QUESTIONS.find(q => q.id === r.questionId);
-                return (
-                  <div key={i} className="bg-slate-50 p-3 rounded-xl">
-                    <span className="text-xs text-slate-400 block truncate">{q?.question || r.question}</span>
-                    <span className="font-bold text-slate-800">{r.answerHindi || r.answer}</span>
-                  </div>
-                );
-              })
+              ayushIntake.responses.map((r, i) => (
+                <div key={i} className="bg-slate-50 px-2 py-1 rounded-lg">
+                  <span className="text-[10px] text-slate-400 block truncate">{r.question}</span>
+                  <span className="font-bold text-navy-900">
+                    {language === 'hi' ? (r.answerHindi || r.answer) : (r.answer || r.answerHindi)}
+                  </span>
+                </div>
+              ))
             ) : (
-              <p className="text-slate-400 col-span-2 text-sm">No assessment responses provided</p>
+              <span className="text-slate-400 italic text-[11px]">No AYUSH responses recorded</span>
             )}
           </div>
-        </div>
+        </GlassCard>
 
-        {/* 4. Medications & Allergies */}
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Pill className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-bold text-slate-800">{t('review.medications')}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/patient/medications')}
-                className="text-xs font-bold text-[#0D9488] hover:underline"
-              >
-                {t('review.edit')}
-              </button>
-            </div>
-            <div className="text-sm">
-              <span className="text-slate-500 block">Taking Medicines:</span>
-              <span className="font-bold text-slate-800 capitalize">
-                {medicationHistory.takingMedicines?.replace('_', ' ') || 'None reported'}
-              </span>
-              {medicationHistory.medicines && (
-                <p className="text-xs bg-slate-50 p-2 rounded-lg mt-2 text-slate-700">
-                  {medicationHistory.medicines}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-rose-600" />
-                <h3 className="font-bold text-slate-800">{t('review.allergies')}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/patient/allergies')}
-                className="text-xs font-bold text-[#0D9488] hover:underline"
-              >
-                {t('review.edit')}
-              </button>
-            </div>
-            <div className="text-sm">
-              <span className="text-slate-500 block">Has Allergies:</span>
-              <span className="font-bold text-slate-800 capitalize">
-                {allergyHistory.hasAllergy || 'None reported'}
-              </span>
-              {allergyHistory.allergyType && (
-                <p className="text-xs bg-slate-50 p-2 rounded-lg mt-2 text-slate-700">
-                  {allergyHistory.allergyType} - {allergyHistory.reaction}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 5. Documents */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+        {/* 4. Medications & Allergies & Documents */}
+        <GlassCard className="p-3.5">
+          <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
             <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-[#0D9488]" />
-              <h3 className="font-bold text-slate-800">{t('review.documentsAttached')}</h3>
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <Pill className="w-4 h-4 text-indigo-600" />
+              </div>
+              <h3 className="text-xs font-bold text-navy-900">
+                History &amp; Documents
+              </h3>
             </div>
             <button
               type="button"
-              onClick={() => navigate('/patient/documents/review')}
-              className="text-xs font-bold text-[#0D9488] hover:underline"
+              onClick={() => navigate('/patient/medications')}
+              className="flex items-center gap-1 text-[11px] font-bold text-medigreen-700 hover:underline cursor-pointer"
             >
-              {t('review.edit')}
+              <Edit2 className="w-3 h-3" /> {t('review.edit')}
             </button>
           </div>
-          <p className="text-sm text-slate-600">
-            {documentIntake.documents.length > 0 
-              ? `${documentIntake.documents.length} document(s) uploaded and ready for doctor review.` 
-              : 'No documents attached.'}
-          </p>
-        </div>
 
-        {/* Bottom CTA Card */}
-        <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-3xl p-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <CheckCircle2 className="w-10 h-10 text-[#059669] shrink-0" />
-            <div>
-              <h4 className="text-xl font-bold text-primary">
-                {t('review.readyToSubmit')}
-              </h4>
-              <p className="text-slate-600 text-sm">
-                {t('review.readySub')}
-              </p>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">Regular Medicines</span>
+              <span className="font-bold text-navy-900">
+                {medicationHistory.takingMedicines === 'yes_daily' ? 'Yes (Daily)' : medicationHistory.takingMedicines === 'yes_sometimes' ? 'Yes (Sometimes)' : 'No / None'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">Known Allergies</span>
+              <span className="font-bold text-navy-900">
+                {allergyHistory.hasAllergy === 'yes' ? `${allergyHistory.allergyType || 'Yes'}` : 'None'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">Attached Documents</span>
+              <span className="font-bold text-medigreen-700">
+                {documentIntake.documents.length} File(s)
+              </span>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={handleConfirm}
-            className="bg-[#064E3B] hover:bg-[#064E3B]/90 text-white px-8 py-4 rounded-2xl font-bold text-xl flex items-center gap-3 transition-colors shadow-lg"
-          >
-            <span>{t('review.confirmAndSubmit')}</span>
-            <span>?</span>
-          </button>
-        </div>
+        </GlassCard>
       </div>
+
+      {/* Confirmation Box */}
+      <GlassCard className="p-3 flex items-center justify-between border-medigreen-300/80 bg-gradient-to-r from-medigreen-50/60 via-white/80 to-teal-50/60">
+        <div className="flex items-center gap-2.5">
+          <CheckCircle2 className="w-5 h-5 text-medigreen-600 shrink-0" />
+          <p className="text-xs font-bold text-navy-900 font-devanagari">
+            {language === 'en'
+              ? 'All information has been verified. Tap Confirm and Submit to proceed.'
+              : language === 'hi'
+                ? 'सभी जानकारी की जांच कर ली गई है। \'पुष्टि करें और सबमिट करें\' दबाएं।'
+                : 'सर्व माहिती तपासून झाली आहे. \'पुष्टी करा आणि सबमिट करा\' दाबा.'}
+          </p>
+        </div>
+      </GlassCard>
     </div>
   );
 }

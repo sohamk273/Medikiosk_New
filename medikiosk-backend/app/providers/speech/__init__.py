@@ -34,12 +34,15 @@ def register_tts_provider(provider: TextToSpeechProvider) -> None:
     _custom_tts_provider = provider
 
 
+from app.providers.speech.gemini import GeminiSpeechToTextProvider
+
 def get_stt_provider() -> SpeechToTextProvider:
     """Returns the configured SpeechToTextProvider.
     
     If SPEECH_PROVIDER == 'bhashini' or ENABLE_LIVE_BHASHINI is True,
     and credentials (BHASHINI_API_KEY, BHASHINI_USER_ID) are configured,
     returns BhashiniSpeechToTextProvider.
+    If SPEECH_PROVIDER == 'gemini', returns GeminiSpeechToTextProvider.
     Otherwise, returns MockSpeechToTextProvider for deterministic offline operation.
     """
     if _custom_stt_provider is not None:
@@ -60,6 +63,9 @@ def get_stt_provider() -> SpeechToTextProvider:
                 "Bhashini speech provider is enabled, but required Bhashini credentials are missing. "
                 "Falling back to MockSpeechToTextProvider."
             )
+    elif settings.SPEECH_PROVIDER.lower() == "gemini":
+        logger.info("Using live Gemini ASR provider (GEMINI_ASR).")
+        return GeminiSpeechToTextProvider()
 
     return _mock_stt_provider
 

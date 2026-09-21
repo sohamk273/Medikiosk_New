@@ -1,7 +1,8 @@
-import { LayoutDashboard, Users, FileText, Activity, FileScan, ClipboardList, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Activity, FileScan, ClipboardList, Settings, LogOut, Zap } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const navItems = [
+  { path: '/doctor/30s-view', label: '30-Sec Doctor View', icon: Zap },
   { path: '/doctor/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/doctor/queue', label: 'Patient Queue', icon: Users },
   { path: '/doctor/cases', label: 'Patient Cases', icon: FileText },
@@ -39,16 +40,15 @@ export function SidebarNav() {
           {navItems.map((item) => {
             const isActive = location.pathname.startsWith(item.path) && item.path !== '#';
             const Icon = item.icon;
-            
+
             return (
               <li key={item.label}>
                 <Link
                   to={item.path}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive 
-                      ? 'bg-primary text-white' 
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
+                      ? 'bg-primary text-white'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-4 h-4" />
                   {item.label}
